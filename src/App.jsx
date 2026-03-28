@@ -8,6 +8,31 @@ import CommLog from './components/CommLog'
 import FleetGrid from './components/FleetGrid'
 import Settings from './components/Settings'
 import Results from './components/ResultsPage'
+import LoraApp from './lora/LoraApp'
+
+function AppNav({ page, setPage }) {
+  const tabs = [
+    { key: 'sim', label: 'Drone Simulation' },
+    { key: 'lora', label: 'LoRa Analysis' },
+  ]
+  return (
+    <nav className="flex items-center gap-1 px-5 py-2 bg-[#050710] border-b border-[var(--color-border)]">
+      <div className="flex items-center gap-2.5 mr-4">
+        <div className="w-7 h-7 flex items-center justify-center bg-gradient-to-br from-[var(--color-cyan)] to-[var(--color-accent)] rounded-lg text-white text-xs font-bold">D</div>
+        <span className="text-[12px] font-bold text-[var(--color-white)] tracking-tight">Thesis Project</span>
+      </div>
+      {tabs.map(t => (
+        <button key={t.key} onClick={() => setPage(t.key)}
+          className={`px-4 py-1.5 text-[11px] font-semibold rounded-md border transition-all cursor-pointer
+            ${page === t.key || (t.key === 'sim' && page === 'results')
+              ? 'bg-[var(--color-accent)] text-white border-transparent shadow-[0_0_12px_rgba(45,127,249,0.15)]'
+              : 'bg-transparent text-[var(--color-txt2)] border-[var(--color-border2)] hover:bg-[#111827]'}`}>
+          {t.label}
+        </button>
+      ))}
+    </nav>
+  )
+}
 
 export default function App() {
   const simRef = useRef(null)
@@ -159,16 +184,29 @@ export default function App() {
 
   if (page === 'results') {
     return (
-      <Results
-        state={s}
-        history={historyRef.current}
-        onBack={() => setPage('sim')}
-      />
+      <div className="min-h-screen bg-[var(--color-bg)]">
+        <AppNav page={page} setPage={setPage} />
+        <Results
+          state={s}
+          history={historyRef.current}
+          onBack={() => setPage('sim')}
+        />
+      </div>
+    )
+  }
+
+  if (page === 'lora') {
+    return (
+      <div className="min-h-screen bg-[var(--color-bg)]">
+        <AppNav page={page} setPage={setPage} />
+        <LoraApp />
+      </div>
     )
   }
 
   return (
     <div className="min-h-screen bg-[var(--color-bg)]">
+      <AppNav page={page} setPage={setPage} />
       <Header state={s} onNavigateResults={() => setPage('results')} />
       <Controls
         state={s} severity={severity} paused={paused}
