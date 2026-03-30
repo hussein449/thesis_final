@@ -401,7 +401,7 @@ export default function App() {
       <Controls
         state={s} severity={severity} paused={paused}
         onTrigger={handleTrigger} onPause={handlePause} onReset={handleReset}
-        onSeverity={setSeverity} onOpenSettings={() => setShowSimSettings(true)}
+        onSeverity={setSeverity}
       />
 
       {/* ── Main workspace ──────────────────────────────── */}

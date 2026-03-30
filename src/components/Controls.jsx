@@ -16,7 +16,7 @@ function nextPoissonInterval(lambda) {
   return -Math.log(1 - Math.random()) / lambda * 1000 // in ms
 }
 
-export default function Controls({ state, severity, paused, onTrigger, onPause, onReset, onSeverity, onOpenSettings }) {
+export default function Controls({ state, severity, paused, onTrigger, onPause, onReset, onSeverity }) {
   const disabled = state.simState !== 'idle' && state.simState !== 'arrived'
 
   const [lambda, setLambda] = useState(0.5)
@@ -112,14 +112,7 @@ export default function Controls({ state, severity, paused, onTrigger, onPause, 
           ))}
         </div>
 
-        {/* Settings */}
-        <button onClick={onOpenSettings}
-          className="ml-auto flex items-center gap-1.5 px-3 py-[6px] text-[10px] font-semibold rounded-md border border-[var(--color-border2)] text-[var(--color-txt2)] bg-transparent hover:bg-[#0d1525] hover:text-[var(--color-white)] cursor-pointer transition-all shrink-0">
-          <svg width="11" height="11" viewBox="0 0 20 20" fill="currentColor">
-            <path fillRule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clipRule="evenodd" />
-          </svg>
-          Settings
-        </button>
+        <div className="ml-auto" />
       </div>
 
       {/* ── Poisson config row ── */}
