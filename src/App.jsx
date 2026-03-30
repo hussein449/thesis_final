@@ -9,11 +9,13 @@ import FleetGrid from './components/FleetGrid'
 import Settings from './components/Settings'
 import Results from './components/ResultsPage'
 import LoraApp from './lora/LoraApp'
+import PartitionPage from './partitioning/PartitionPage'
 
 function AppNav({ page, setPage }) {
   const tabs = [
     { key: 'sim', label: 'Drone Simulation' },
     { key: 'lora', label: 'LoRa Analysis' },
+    { key: 'partition', label: 'Partitioning' },
   ]
   return (
     <nav className="flex items-center gap-1 px-5 py-2 bg-[#050710] border-b border-[var(--color-border)]">
@@ -200,6 +202,15 @@ export default function App() {
       <div className="min-h-screen bg-[var(--color-bg)]">
         <AppNav page={page} setPage={setPage} />
         <LoraApp />
+      </div>
+    )
+  }
+
+  if (page === 'partition') {
+    return (
+      <div className="min-h-screen bg-[var(--color-bg)]">
+        <AppNav page={page} setPage={setPage} />
+        <PartitionPage />
       </div>
     )
   }
