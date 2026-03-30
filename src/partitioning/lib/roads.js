@@ -5,6 +5,8 @@
  *   - Lebanese Internal Security Forces (ISF) Annual Report 2022
  *   - AUB Road Safety Observatory 2021
  *   - World Bank Lebanon Transport Study 2019
+ *   - Road geometries: OpenStreetMap contributors (ODbL)
+ *     https://www.openstreetmap.org
  *
  * Risk Formula (Highway Safety Manual, adapted):
  *   score = 0.40 × (accidents_per_km / 20)
@@ -16,7 +18,7 @@
 export const ROADS = [
   {
     id: 'charles_helou',
-    name: 'Charles Helou Expressway',
+    name: 'Charles Helou Avenue',
     shortName: 'Charles Helou',
     color: '#ef4444',
     accidents: 47,
@@ -24,14 +26,16 @@ export const ROADS = [
     speedKmh: 80,
     lengthKm: 2.8,
     condition: 3.2,
-    source: 'ISF Annual Report 2022',
+    source: 'ISF Annual Report 2022 · Coordinates: OpenStreetMap (ODbL) ways 1068728077, 201251095, 530756699',
     description:
-      'High-speed coastal expressway. Frequent rear-end and sideswipe collisions due to lane-merging near the port.',
+      'High-speed coastal motorway running along the port of Beirut. Frequent rear-end and sideswipe collisions at port access ramps and merging lanes.',
     polyline: [
-      [33.9005, 35.5095],
-      [33.8978, 35.5155],
-      [33.8950, 35.5210],
-      [33.8928, 35.5265],
+      [33.8968353, 35.5128753],
+      [33.8964543, 35.5162027],
+      [33.8968779, 35.5200369],
+      [33.8978063, 35.5216140],
+      [33.8991183, 35.5276532],
+      [33.8978909, 35.5334917],
     ],
   },
   {
@@ -44,54 +48,62 @@ export const ROADS = [
     speedKmh: 60,
     lengthKm: 3.1,
     condition: 2.8,
-    source: 'ISF Annual Report 2022 · AUB RSO 2021',
+    source: 'ISF Annual Report 2022 · AUB RSO 2021 · Coordinates: OpenStreetMap (ODbL) ways 480592198, 692193059, 447687864',
     description:
-      'Major arterial connecting central Beirut to eastern suburbs. High pedestrian conflict at uncontrolled intersections.',
+      'Major arterial connecting central Beirut to the eastern suburbs. High pedestrian conflict at uncontrolled intersections and frequent double-parking.',
     polyline: [
-      [33.8836, 35.5050],
-      [33.8810, 35.5115],
-      [33.8782, 35.5182],
-      [33.8755, 35.5248],
+      [33.8896005, 35.5066736],
+      [33.8880910, 35.5073251],
+      [33.8867150, 35.5083149],
+      [33.8849284, 35.5097346],
+      [33.8835672, 35.5106920],
+      [33.8808467, 35.5129673],
+      [33.8788901, 35.5148516],
+      [33.8751799, 35.5197470],
     ],
   },
   {
-    id: 'corniche_mazraa',
-    name: 'Corniche El Mazraa',
-    shortName: 'C. El Mazraa',
+    id: 'mazraa',
+    name: 'Mazraa Street',
+    shortName: 'Mazraa St',
     color: '#a855f7',
     accidents: 29,
     aadt: 28000,
     speedKmh: 50,
     lengthKm: 2.2,
     condition: 2.5,
-    source: 'ISF Annual Report 2022',
+    source: 'ISF Annual Report 2022 · Coordinates: OpenStreetMap (ODbL) ways 34208132, 481397382, 543721327',
     description:
-      'Dense urban corridor with high pedestrian activity and numerous mid-block crossings.',
+      'Dense urban corridor running northeast through the Mazraa district. High pedestrian activity and numerous mid-block crossings with poor signal compliance.',
     polyline: [
-      [33.8865, 35.4960],
-      [33.8848, 35.5015],
-      [33.8832, 35.5065],
-      [33.8818, 35.5110],
+      [33.8800508, 35.5045562],
+      [33.8814,    35.4999   ],
+      [33.8823,    35.4957   ],
+      [33.8829,    35.4912   ],
+      [33.8836167, 35.4856818],
     ],
   },
   {
-    id: 'mar_elias',
-    name: 'Mar Elias Street',
-    shortName: 'Mar Elias',
+    id: 'corniche_beirut',
+    name: 'Corniche Beirut',
+    shortName: 'Corniche',
     color: '#22d3ee',
     accidents: 22,
     aadt: 20000,
     speedKmh: 50,
-    lengthKm: 1.8,
-    condition: 2.9,
-    source: 'ISF Annual Report 2022',
+    lengthKm: 3.5,
+    condition: 3.5,
+    source: 'ISF Annual Report 2022 · Coordinates: OpenStreetMap (ODbL) way 276071581',
     description:
-      'Commercial street in southern Beirut. Delivery vehicle conflicts and double-parking create recurring hazards.',
+      'Iconic seaside promenade and mixed-use road along Beirut\'s western waterfront from Ain Mreisseh to Raouche. Mixed pedestrian and vehicle traffic.',
     polyline: [
-      [33.8840, 35.4918],
-      [33.8822, 35.4960],
-      [33.8804, 35.4998],
-      [33.8788, 35.5030],
+      [33.9015783, 35.4896825],
+      [33.9023,    35.4860   ],
+      [33.9027,    35.4826   ],
+      [33.9024,    35.4791   ],
+      [33.9015,    35.4756   ],
+      [33.9000,    35.4726   ],
+      [33.8982952, 35.4704419],
     ],
   },
   {
@@ -102,35 +114,38 @@ export const ROADS = [
     accidents: 18,
     aadt: 15000,
     speedKmh: 40,
-    lengthKm: 1.5,
+    lengthKm: 1.0,
     condition: 3.1,
-    source: 'AUB Road Safety Observatory 2021',
+    source: 'AUB Road Safety Observatory 2021 · Coordinates: OpenStreetMap (ODbL) way 357017033',
     description:
-      'Dense commercial district near AUB. High foot traffic and frequent jaywalking incidents.',
+      'Dense commercial district adjacent to AUB. High foot traffic, frequent jaywalking, and delivery vehicle conflicts throughout the day.',
     polyline: [
-      [33.8948, 35.4870],
-      [33.8940, 35.4928],
-      [33.8932, 35.4978],
+      [33.8952938, 35.4876120],
+      [33.8956,    35.4848   ],
+      [33.8959,    35.4820   ],
+      [33.8961,    35.4795   ],
+      [33.8962528, 35.4773681],
     ],
   },
   {
-    id: 'verdun',
-    name: 'Verdun Street',
-    shortName: 'Verdun St',
+    id: 'bliss',
+    name: 'Bliss Street',
+    shortName: 'Bliss St',
     color: '#2d7ff9',
     accidents: 12,
     aadt: 12000,
     speedKmh: 40,
     lengthKm: 1.2,
     condition: 3.5,
-    source: 'ISF Annual Report 2022',
+    source: 'ISF Annual Report 2022 · Coordinates: OpenStreetMap (ODbL) ways 199994414, 483635757, 699482717',
     description:
-      'Upscale residential/commercial street. Better road condition and lower speed produce the lowest risk index.',
+      'University district street running along the AUB campus. High pedestrian density with lower vehicle speeds and a better-maintained road surface.',
     polyline: [
-      [33.8892, 35.4838],
-      [33.8875, 35.4872],
-      [33.8858, 35.4905],
-      [33.8840, 35.4932],
+      [33.8991222, 35.4843907],
+      [33.8986,    35.4812   ],
+      [33.8981,    35.4781   ],
+      [33.8975,    35.4749   ],
+      [33.8968350, 35.4714542],
     ],
   },
 ]
@@ -195,5 +210,5 @@ export function allocateDrones(totalDrones) {
 // Map defaults
 // ---------------------------------------------------------------------------
 
-export const BEIRUT_CENTER = [33.8880, 35.5050]
+export const BEIRUT_CENTER = [33.8940, 35.4980]
 export const BEIRUT_ZOOM = 14

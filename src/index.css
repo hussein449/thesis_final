@@ -65,3 +65,7 @@ input[type=range]::-webkit-slider-thumb {
 /* Keyframes */
 @keyframes pulse-dot { 0%,100%{opacity:1} 50%{opacity:.2} }
 @keyframes sos-flash { 0%{background:#1a0505} 100%{background:var(--color-card)} }
+@keyframes loraDrawerIn {
+  from { transform: translateX(100%); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}

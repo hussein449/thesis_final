@@ -8,10 +8,21 @@ export function createSimulation() {
   const W = 1100, H = 420;
   const RX1 = 100, RX2 = W - 30, RY1 = 140, RY2 = 290;
   const RCY = (RY1 + RY2) / 2, PPM = (RY2 - RY1) / 20;
-  const SX = RX1 + (RX2 - RX1) * 0.38, SY = RY1 - 24;
-  const LAND_X = SX, LAND_Y = RY1 + 20;
-  const DOCK_X = RX2 - 80, DOCK_Y = RY2 + 55;
   const MIN_PATROL = 2;
+
+  /* Two docking stations — left and right of the road */
+  const DOCKS = [
+    { id: 0, x: RX1 + 80,  y: RY2 + 55, label: 'DOCK A' },
+    { id: 1, x: RX2 - 80,  y: RY2 + 55, label: 'DOCK B' },
+  ];
+
+  /* Four roadside sensors spread along the top of the road */
+  const SENSORS = [
+    { id: 1, x: RX1 + (RX2 - RX1) * 0.12, y: RY1 - 24 },
+    { id: 2, x: RX1 + (RX2 - RX1) * 0.38, y: RY1 - 24 },
+    { id: 3, x: RX1 + (RX2 - RX1) * 0.62, y: RY1 - 24 },
+    { id: 4, x: RX1 + (RX2 - RX1) * 0.82, y: RY1 - 24 },
+  ];
 
   /* Return-to-patrol delay (seconds at incident before heading back) */
   const RETURN_DELAY = 1.5;
@@ -20,10 +31,11 @@ export function createSimulation() {
   let drones = [], reserveDrones = [], wave = null, commArrows = [], swapOps = [];
   let simState = 'idle', rot = 0, simMs = 0, sensorPulse = 0;
   let severity = 0, ackDroneIdx = -1, primaryIdx = -1, backupIdx = -1;
+  let activeSensorIdx = 0;
   let sosFrame = { sensorId: 0, lat: 0, lon: 0, timestamp: 0, severity: 0 };
   let logs = [];
   let logCounter = 0;
-  let arrivedTimers = {}; // droneIdx → seconds spent at incident
+  let arrivedTimers = {};
 
   /* Config (set from React sliders) */
   let config = {
@@ -35,8 +47,15 @@ export function createSimulation() {
   function setConfig(c) { Object.assign(config, c); }
   function setSeverity(s) { severity = s; }
 
+  /* Active sensor helpers */
+  function activeSensor() { return SENSORS[activeSensorIdx]; }
+  function getLandPos() { return { lx: activeSensor().x, ly: RY1 + 20 }; }
+
   /* Helpers */
-  function distPx(d) { return Math.hypot(d.x - SX, d.y - SY); }
+  function distPx(d) {
+    const s = activeSensor();
+    return Math.hypot(d.x - s.x, d.y - s.y);
+  }
   function distM(d) { return distPx(d) / PPM; }
 
   function addLog(msg, cls) {
@@ -68,15 +87,26 @@ export function createSimulation() {
         rotOff: Math.random() * Math.PI * 2, id: i + 1,
         battery: 45 + Math.floor(Math.random() * 50),
         range: 3 + Math.floor(Math.random() * 10),
-        flyProgress: 0, flyStartX: 0, flyStartY: 0, bid: 0, swapPending: false
+        flyProgress: 0, flyStartX: 0, flyStartY: 0, bid: 0, swapPending: false,
+        returnDockX: DOCKS[0].x, returnDockY: DOCKS[0].y,
       });
     }
   }
 
   function rebuildReserve() {
-    const n = config.reserveCount; reserveDrones = []; swapOps = [];
+    reserveDrones = []; swapOps = [];
+    const n = config.reserveCount;
+    const dockCounters = new Array(DOCKS.length).fill(0);
     for (let i = 0; i < n; i++) {
-      reserveDrones.push({ id: 'R' + (i + 1), battery: 100, state: 'docked', x: DOCK_X - 20 + i * 22, y: DOCK_Y - 8 });
+      const di = i % DOCKS.length;
+      const dock = DOCKS[di];
+      const localI = dockCounters[di];
+      dockCounters[di]++;
+      reserveDrones.push({
+        id: 'R' + (i + 1), battery: 100, state: 'docked',
+        x: dock.x - 8 + localI * 18, y: dock.y - 8,
+        homeX: dock.x, homeY: dock.y, dockIdx: di,
+      });
     }
   }
 
@@ -85,7 +115,7 @@ export function createSimulation() {
   /* SOS */
   function generateSOS() {
     sosFrame = {
-      sensorId: 1 + Math.floor(Math.random() * 99),
+      sensorId: activeSensor().id,
       lat: 33.85 + Math.random() * 0.05,
       lon: 35.50 + Math.random() * 0.05,
       timestamp: Math.floor(Date.now() / 1000),
@@ -104,32 +134,55 @@ export function createSimulation() {
     addArrow(d.x, d.y, d.x, d.laneY, '#22d3ee', 'RTN', 400);
   }
 
-  /* Swap logic */
+  /* Swap logic — dispatches the reserve with the MOST battery that still
+     exceeds the requesting drone's current charge level. */
   function triggerSwap(droneIdx) {
-    const d = drones[droneIdx]; d.swapPending = true;
-    let rIdx = -1;
+    const d = drones[droneIdx];
+    d.swapPending = true;
+
+    /* Pick reserve with highest battery that beats the requesting drone */
+    let rIdx = -1, bestBat = d.battery; // threshold: must be better than current drone
     for (let r = 0; r < reserveDrones.length; r++) {
-      if (reserveDrones[r].state === 'docked' && reserveDrones[r].battery > 60) { rIdx = r; break; }
+      const rd = reserveDrones[r];
+      if (rd.state === 'docked' && rd.battery > bestBat) {
+        bestBat = rd.battery;
+        rIdx = r;
+      }
     }
-    if (rIdx < 0) { addLog(`[${Math.floor(simMs)}ms] D${d.id} LOW BAT (${d.battery.toFixed(0)}%) — no reserve!`, 'cl-sos'); return; }
+
+    if (rIdx < 0) {
+      addLog(`[${Math.floor(simMs)}ms] D${d.id} LOW BAT (${d.battery.toFixed(0)}%) — no reserve with higher charge`, 'cl-sos');
+      return;
+    }
+
     const rd = reserveDrones[rIdx];
-    addLog(`[${Math.floor(simMs)}ms] D${d.id} LOW BAT (${d.battery.toFixed(0)}%) → requesting swap`, 'cl-dock');
-    addArrow(d.x, d.y, DOCK_X, DOCK_Y, '#14b8a6', 'LOW BAT', 500);
+    const dockX = rd.homeX, dockY = rd.homeY;
+
+    addLog(`[${Math.floor(simMs)}ms] D${d.id} (${d.battery.toFixed(0)}%) → swapping with ${rd.id} (${rd.battery.toFixed(0)}%)`, 'cl-dock');
+    addArrow(d.x, d.y, dockX, dockY, '#14b8a6', 'LOW BAT', 500);
+
     setTimeout(() => {
-      addLog(`[${Math.floor(simMs)}ms] Dock dispatching ${rd.id} → replace D${d.id}`, 'cl-dock');
+      addLog(`[${Math.floor(simMs)}ms] ${rd.id} dispatched → replacing D${d.id}`, 'cl-dock');
       rd.state = 'deploying';
-      addArrow(DOCK_X, DOCK_Y, d.x, d.y, '#14b8a6', rd.id, 600);
-      swapOps.push({ reserveIdx: rIdx, targetDroneIdx: droneIdx, progress: 0, startX: DOCK_X, startY: DOCK_Y, targetX: d.x, targetY: d.laneY, label: rd.id });
+      addArrow(dockX, dockY, d.x, d.y, '#14b8a6', rd.id, 600);
+      swapOps.push({
+        reserveIdx: rIdx, targetDroneIdx: droneIdx, progress: 0,
+        startX: dockX, startY: dockY,
+        targetX: d.x, targetY: d.laneY, label: rd.id,
+      });
       setTimeout(() => {
-        d.state = 'returning'; d.flyStartX = d.x; d.flyStartY = d.y; d.flyProgress = 0;
-        addLog(`[${Math.floor(simMs)}ms] D${d.id} → returning to dock`, 'cl-dock');
-        addArrow(d.x, d.y, DOCK_X, DOCK_Y, '#14b8a6', 'RTN', 500);
+        d.state = 'returning';
+        d.flyStartX = d.x; d.flyStartY = d.y; d.flyProgress = 0;
+        d.returnDockX = dockX; d.returnDockY = dockY;
+        addLog(`[${Math.floor(simMs)}ms] D${d.id} → heading to ${DOCKS.find(dk => dk.x === dockX)?.label || 'dock'}`, 'cl-dock');
+        addArrow(d.x, d.y, dockX, dockY, '#14b8a6', 'RTN', 500);
       }, 800);
     }, 700);
   }
 
   /* Evaluation */
   function startEvaluation(ackIdx) {
+    const sx = activeSensor().x, sy = activeSensor().y;
     addLog(`[${Math.floor(simMs)}ms] Evaluating fleet (sev=${severity}, minPatrol=${MIN_PATROL})`, 'cl-eval');
     for (let i = 0; i < drones.length; i++) drones[i].bid = calcBid(drones[i]);
     const maxDeploy = Math.max(0, drones.length - MIN_PATROL);
@@ -152,7 +205,7 @@ export function createSimulation() {
       } else {
         drones[ackIdx].state = 'idle';
         addLog(`[${Math.floor(simMs)}ms] D${ackD.id} below threshold → forwarding CFP`, 'cl-cnp');
-        addArrow(ackD.x, ackD.y, SX, SY, '#f59e0b', 'CFP', 400);
+        addArrow(ackD.x, ackD.y, sx, sy, '#f59e0b', 'CFP', 400);
         setTimeout(() => runCNPSingle(ackIdx), 800);
       }
     } else {
@@ -246,18 +299,27 @@ export function createSimulation() {
         d.battery = Math.max(0, d.battery - batDrain);
         if (d.battery <= config.lowBat && !d.swapPending) triggerSwap(drones.indexOf(d));
       }
+
+      /* Returning to dock — head to the drone's assigned dock */
       if (d.state === 'returning') {
         d.flyProgress += dt * 0.4 * config.waveSpeed;
-        if (d.flyProgress >= 1) { d.flyProgress = 1; d.x = DOCK_X; d.y = DOCK_Y; d.state = 'docked'; addLog(`[${Math.floor(simMs)}ms] D${d.id} docked.`, 'cl-dock'); }
-        else { const t = d.flyProgress, e = t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t+2,2)/2; d.x = d.flyStartX + (DOCK_X - d.flyStartX) * e; d.y = d.flyStartY + (DOCK_Y - d.flyStartY) * e; }
+        const rdx = d.returnDockX !== undefined ? d.returnDockX : DOCKS[0].x;
+        const rdy = d.returnDockY !== undefined ? d.returnDockY : DOCKS[0].y;
+        if (d.flyProgress >= 1) {
+          d.flyProgress = 1; d.x = rdx; d.y = rdy; d.state = 'docked';
+          addLog(`[${Math.floor(simMs)}ms] D${d.id} docked & charging.`, 'cl-dock');
+        } else {
+          const t = d.flyProgress, e = t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t+2,2)/2;
+          d.x = d.flyStartX + (rdx - d.flyStartX) * e;
+          d.y = d.flyStartY + (rdy - d.flyStartY) * e;
+        }
       }
+
       /* Return to patrol lane animation */
       if (d.state === 'returningToPatrol') {
         d.flyProgress += dt * 0.5 * config.waveSpeed;
-        const targetX = RX1 + 40 + Math.random() * 0.1 + (d.flyStartX - RX1) * 0.5; // head toward mid-lane
         if (d.flyProgress >= 1) {
           d.flyProgress = 1;
-          d.x = d.flyStartX + (d.flyStartX - d.flyStartX); // keep x roughly where it was heading
           d.y = d.laneY;
           d.state = 'idle';
           d.dir = Math.random() < 0.5 ? 1 : -1;
@@ -268,6 +330,11 @@ export function createSimulation() {
           const t = d.flyProgress, e = t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t+2,2)/2;
           d.y = d.flyStartY + (d.laneY - d.flyStartY) * e;
         }
+      }
+
+      /* Charge patrol drones that are docked */
+      if (d.state === 'docked') {
+        d.battery = Math.min(100, d.battery + dt * 3);
       }
     }
 
@@ -282,20 +349,16 @@ export function createSimulation() {
           }
         }
       }
-      /* Check if all deployed drones have returned to patrol */
       if (simState === 'arrived') {
         let anyStillOut = false;
         for (let i = 0; i < drones.length; i++) {
           if (drones[i].state === 'arrived' || drones[i].state === 'returningToPatrol') {
-            anyStillOut = true;
-            break;
+            anyStillOut = true; break;
           }
         }
         if (!anyStillOut) {
           simState = 'idle';
-          primaryIdx = -1;
-          backupIdx = -1;
-          ackDroneIdx = -1;
+          primaryIdx = -1; backupIdx = -1; ackDroneIdx = -1;
           addLog(`[${Math.floor(simMs)}ms] All drones back on patrol. Ready.`, 'cl-ack');
         }
       }
@@ -309,14 +372,23 @@ export function createSimulation() {
         sw.progress = 1;
         const rd = reserveDrones[sw.reserveIdx]; rd.state = 'deployed';
         const newId = drones.length + 1;
-        drones.push({ x: sw.targetX, y: sw.targetY, laneY: sw.targetY, dir: Math.random() < 0.5 ? 1 : -1, state: 'idle', rotOff: Math.random() * Math.PI * 2, id: newId, battery: rd.battery, range: 8 + Math.floor(Math.random() * 5), flyProgress: 0, flyStartX: 0, flyStartY: 0, bid: 0, swapPending: false });
+        drones.push({
+          x: sw.targetX, y: sw.targetY, laneY: sw.targetY,
+          dir: Math.random() < 0.5 ? 1 : -1, state: 'idle',
+          rotOff: Math.random() * Math.PI * 2, id: newId,
+          battery: rd.battery, range: 8 + Math.floor(Math.random() * 5),
+          flyProgress: 0, flyStartX: 0, flyStartY: 0, bid: 0, swapPending: false,
+          returnDockX: rd.homeX, returnDockY: rd.homeY,
+        });
         addLog(`[${Math.floor(simMs)}ms] ${rd.id} now D${newId} (bat=${rd.battery.toFixed(0)}%)`, 'cl-dock');
         swapOps.splice(si, 1);
       }
     }
 
-    /* Reserve charging */
-    for (const rd of reserveDrones) { if (rd.state === 'docked') rd.battery = Math.min(100, rd.battery + dt * 3); }
+    /* Reserve drones charging */
+    for (const rd of reserveDrones) {
+      if (rd.state === 'docked') rd.battery = Math.min(100, rd.battery + dt * 3);
+    }
 
     /* Arrows */
     for (let i = commArrows.length - 1; i >= 0; i--) {
@@ -324,7 +396,8 @@ export function createSimulation() {
       if (a.progress >= 1 && a.age > a.dur + 400) commArrows.splice(i, 1);
     }
 
-    /* Broadcasting */
+    /* Broadcasting — wave expands from active sensor */
+    const sx = activeSensor().x, sy = activeSensor().y;
     if (simState === 'broadcasting' && wave) {
       wave.r += dt * config.waveSpeed * 120;
       for (let wi = 0; wi < drones.length; wi++) {
@@ -335,7 +408,7 @@ export function createSimulation() {
           if (ackDroneIdx < 0) {
             ackDroneIdx = wi; wd.state = 'ackSender';
             addLog(`[${Math.floor(simMs)}ms] D${wd.id} sending ACK...`, 'cl-ack');
-            addArrow(wd.x, wd.y, SX, SY, '#10b981', 'ACK', 500);
+            addArrow(wd.x, wd.y, sx, sy, '#10b981', 'ACK', 500);
             ((idx) => { setTimeout(() => { if (simState !== 'broadcasting') return; simState = 'evaluating'; addLog(`[${Math.floor(simMs)}ms] ACK received. Broadcast stopped.`, 'cl-ack'); wave = null; startEvaluation(idx); }, 600); })(wi);
           }
         }
@@ -343,8 +416,9 @@ export function createSimulation() {
       if (wave && wave.r > wave.maxR) wave.r = wave.maxR;
     }
 
-    /* Flying */
+    /* Flying — drones head to active sensor's landing position */
     if (simState === 'flying') {
+      const { lx: LAND_X, ly: LAND_Y } = getLandPos();
       let allArr = true;
       for (let fi = 0; fi < drones.length; fi++) {
         const fd = drones[fi];
@@ -362,13 +436,14 @@ export function createSimulation() {
   /* Actions */
   function triggerAccident() {
     if (simState !== 'idle' && simState !== 'arrived') return false;
+    activeSensorIdx = Math.floor(Math.random() * SENSORS.length);
     for (const d of drones) { if (d.state !== 'returning' && d.state !== 'docked') { d.state = 'idle'; d.bid = 0; d.flyProgress = 0; } }
     ackDroneIdx = -1; primaryIdx = -1; backupIdx = -1; commArrows = [];
     arrivedTimers = {};
     simState = 'broadcasting'; generateSOS();
     let maxPx = 0; for (const d of drones) { const dist = distPx(d); if (dist > maxPx) maxPx = dist; }
     wave = { r: 0, maxR: maxPx + 80 };
-    addLog(`[0ms] ⚠ ACCIDENT! SOS broadcasting (sev=${severity})`, 'cl-sos');
+    addLog(`[0ms] ⚠ ACCIDENT! Sensor ${activeSensor().id} broadcasting (sev=${severity})`, 'cl-sos');
     simMs = 0;
     return true;
   }
@@ -377,6 +452,7 @@ export function createSimulation() {
     wave = null; commArrows = []; swapOps = [];
     ackDroneIdx = -1; primaryIdx = -1; backupIdx = -1;
     simMs = 0; simState = 'idle'; sensorPulse = 0;
+    activeSensorIdx = 0;
     logs = []; logCounter = 0;
     arrivedTimers = {};
     rebuildAll();
@@ -384,13 +460,17 @@ export function createSimulation() {
 
   /* Getters */
   function getState() {
+    const s = activeSensor();
+    const { lx: LAND_X, ly: LAND_Y } = getLandPos();
     return {
       drones, reserveDrones, wave, commArrows, swapOps, logs,
       simState, simMs, severity, sosFrame, rot, sensorPulse,
       ackDroneIdx, primaryIdx, backupIdx, logCounter,
+      sensors: SENSORS, activeSensorIdx,
+      docks: DOCKS,
       /* layout constants for canvas */
       W, H, RX1, RX2, RY1, RY2, RCY, PPM,
-      SX, SY, LAND_X, LAND_Y, DOCK_X, DOCK_Y
+      SX: s.x, SY: s.y, LAND_X, LAND_Y,
     };
   }
 
