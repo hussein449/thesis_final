@@ -10,6 +10,7 @@ import Settings from './components/Settings'
 import Results from './components/ResultsPage'
 import LoraApp from './lora/LoraApp'
 import PartitionPage from './partitioning/PartitionPage'
+import DetectionPage from './detection/DetectionPage'
 
 // ─── Reusable icon ────────────────────────────────────────────────────────────
 function GearIcon() {
@@ -24,17 +25,18 @@ function GearIcon() {
 function AppHeader({
   page, setPage,
   // sim props
-  simState, simMs, severity, primaryIdx, backupIdx, simDrones,
-  paused, onTrigger, onPause, onReset, onSeverity, onOpenSimSettings, onNavigateResults,
+  simState, simMs, severity, primaryIdx, simDrones,
+  onOpenSimSettings, onNavigateResults,
   // lora props
   loraScenario, onLoraScenario, showLoraGraphs, onToggleLoraGraphs, onOpenLoraSettings,
   // partition props
   partitionDroneCount, onPartitionDroneCount,
 }) {
   const tabs = [
-    { key: 'sim',       label: 'Drone Simulation', icon: '◈' },
-    { key: 'lora',      label: 'LoRa Analysis',    icon: '◉' },
-    { key: 'partition', label: 'Partitioning',      icon: '⬡' },
+    { key: 'detection', label: 'Operations',          icon: '◇' },
+    { key: 'partition', label: 'Risk Partitioning',   icon: '⬡' },
+    { key: 'sim',       label: 'Dispatch Protocol',   icon: '◈' },
+    { key: 'lora',      label: 'Link Budget',         icon: '◉' },
   ]
 
   const simPhase =
@@ -63,8 +65,12 @@ function AppHeader({
           </svg>
         </div>
         <div className="leading-none">
-          <div className="text-[12px] font-extrabold text-[var(--color-white)] tracking-tight">Thesis Project</div>
-          <div className="text-[8px] text-[var(--color-txt3)] uppercase tracking-[0.15em] mt-0.5">Drone Swarm · AUB</div>
+          <div className="text-[12px] font-extrabold text-[var(--color-white)] tracking-tight">
+            Command Center
+          </div>
+          <div className="text-[8px] text-[var(--color-txt3)] uppercase tracking-[0.15em] mt-0.5">
+            Simulation-Aided · AUB
+          </div>
         </div>
       </div>
 
@@ -95,9 +101,21 @@ function AppHeader({
       {/* ── Page-specific right content ── */}
       <div className="flex items-center gap-2 flex-1 min-w-0 pl-2">
 
+        {/* DETECTION (operations) page */}
+        {page === 'detection' && <>
+          <div className="flex items-center gap-2">
+            <span className="px-2 py-0.5 text-[9px] font-bold rounded bg-[var(--color-mint)]/15 text-[var(--color-mint)] uppercase tracking-wider">
+              Primary
+            </span>
+            <span className="text-[10px] text-[var(--color-txt2)]">
+              Detection-time evaluation, policy comparison, and operational metrics.
+            </span>
+          </div>
+          <div className="flex-1" />
+        </>}
+
         {/* SIM page */}
-        {(page === 'sim') && <>
-          {/* Phase badge */}
+        {page === 'sim' && <>
           <div
             className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold shrink-0 border"
             style={{ color: phaseColor, borderColor: phaseColor + '44', background: phaseColor + '14' }}
@@ -105,20 +123,17 @@ function AppHeader({
             <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: phaseColor }} />
             {simPhase}
           </div>
-          {/* Time */}
           <div className="shrink-0 text-center">
             <div className="text-[8px] text-[var(--color-txt3)] uppercase tracking-widest leading-none mb-0.5">Time</div>
             <div className="text-[11px] font-bold font-[var(--font-mono)] text-[var(--color-cyan)] leading-none">{Math.floor(simMs)}ms</div>
           </div>
           <div className="w-px h-4 bg-[var(--color-border)] shrink-0" />
-          {/* Severity */}
           <div className="shrink-0 text-center">
             <div className="text-[8px] text-[var(--color-txt3)] uppercase tracking-widest leading-none mb-0.5">Sev</div>
             <div className={`text-[11px] font-bold font-[var(--font-mono)] leading-none ${severity === 1 ? 'text-[var(--color-danger)]' : 'text-[var(--color-warn)]'}`}>
               {severity === 0 ? 'MOD' : 'HIGH'}
             </div>
           </div>
-          {/* Primary */}
           <div className="shrink-0 text-center">
             <div className="text-[8px] text-[var(--color-txt3)] uppercase tracking-widest leading-none mb-0.5">Primary</div>
             <div className="text-[11px] font-bold font-[var(--font-mono)] text-[var(--color-violet)] leading-none">
@@ -126,9 +141,7 @@ function AppHeader({
             </div>
           </div>
           <div className="w-px h-4 bg-[var(--color-border)] shrink-0" />
-          {/* Spacer */}
           <div className="flex-1" />
-          {/* Actions */}
           <button
             onClick={onNavigateResults}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[10px] font-bold border border-[var(--color-border2)] text-[var(--color-txt2)] hover:bg-[#111827] transition-colors cursor-pointer shrink-0"
@@ -150,7 +163,7 @@ function AppHeader({
             onClick={() => setPage('sim')}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[10px] font-bold border border-[var(--color-border2)] text-[var(--color-txt2)] hover:bg-[#111827] transition-colors cursor-pointer"
           >
-            ← Back to Simulation
+            ← Back to dispatch protocol
           </button>
         </>}
 
@@ -217,7 +230,8 @@ export default function App() {
   const [, forceUpdate] = useState(0)
   const rerender = useCallback(() => forceUpdate(n => n + 1), [])
 
-  const [page, setPage] = useState('sim')
+  // Default landing page is the new operations dashboard.
+  const [page, setPage] = useState('detection')
 
   /* Init simulation once */
   if (!simRef.current) simRef.current = createSimulation()
@@ -289,8 +303,12 @@ export default function App() {
   useEffect(() => { sim.setConfig(config) }, [config])
   useEffect(() => { sim.setSeverity(severity) }, [severity])
 
-  /* Animation loop */
+  /* Animation loop — only runs when the dispatch protocol page is active. */
   useEffect(() => {
+    if (page !== 'sim') {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current)
+      return
+    }
     const cv = canvasRef.current
     if (!cv) return
     const cx = cv.getContext('2d')
@@ -339,14 +357,22 @@ export default function App() {
   /* Shared header props */
   const headerProps = {
     page, setPage,
-    simState: s.simState, simMs: s.simMs, severity, primaryIdx: s.primaryIdx, backupIdx: s.backupIdx, simDrones: s.drones,
-    paused, onTrigger: handleTrigger, onPause: handlePause, onReset: handleReset, onSeverity: setSeverity,
+    simState: s.simState, simMs: s.simMs, severity, primaryIdx: s.primaryIdx, simDrones: s.drones,
     onOpenSimSettings: () => setShowSimSettings(true),
     onNavigateResults: () => setPage('results'),
     loraScenario, onLoraScenario: setLoraScenario,
     showLoraGraphs, onToggleLoraGraphs: () => setShowLoraGraphs(g => !g),
     onOpenLoraSettings: () => setShowLoraSettings(true),
     partitionDroneCount, onPartitionDroneCount: setPartitionDroneCount,
+  }
+
+  if (page === 'detection') {
+    return (
+      <div className="min-h-screen bg-[var(--color-bg)] flex flex-col">
+        <AppHeader {...headerProps} />
+        <DetectionPage />
+      </div>
+    )
   }
 
   if (page === 'results') {
@@ -381,7 +407,7 @@ export default function App() {
     )
   }
 
-  /* Derived viewport info */
+  /* Dispatch protocol (legacy CNP simulator) */
   const simPhaseLabel =
     s.simState === 'broadcasting' ? 'BROADCASTING'
     : s.simState === 'evaluating' ? 'EVALUATING'
@@ -421,10 +447,10 @@ export default function App() {
                 }}
               />
               <span className="text-[8.5px] font-bold text-[var(--color-txt3)] uppercase tracking-[0.15em]">
-                Simulation Viewport
+                Dispatch Protocol Demo
               </span>
               <span className="text-[var(--color-border2)] text-[9px]">·</span>
-              <span className="text-[8.5px] text-[var(--color-txt3)]">Beirut, Lebanon</span>
+              <span className="text-[8.5px] text-[var(--color-txt3)]">CNP single-incident view</span>
             </div>
 
             <div className="w-px h-3 bg-[var(--color-border2)] shrink-0" />
