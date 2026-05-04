@@ -1,348 +1,301 @@
 import { useState } from 'react'
-
-// ─── Small helpers ────────────────────────────────────────────────────────────
-function Label({ children }) {
-  return (
-    <div className="text-[8px] font-bold text-[var(--color-txt2)] uppercase tracking-[0.12em] mb-1.5">
-      {children}
-    </div>
-  )
-}
-
-function StatChip({ label, value, color }) {
-  return (
-    <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-md p-2 text-center">
-      <div className="text-[7px] text-[var(--color-txt3)] uppercase tracking-widest font-bold mb-0.5">{label}</div>
-      <div className={`text-[14px] font-bold font-[var(--font-mono)] ${color || 'text-[var(--color-cyan)]'}`}>{value}</div>
-    </div>
-  )
-}
+import { computeRiskBreakdown } from '../lib/roads'
 
 // ─── Road detail popup ────────────────────────────────────────────────────────
 function RoadDetailPopup({ item, onClose }) {
   const { road, score, drones, exact, percentage } = item
-  const accPerKm = road.accidents / road.lengthKm
-
-  const terms = [
-    { label: 'Accident Rate',        color: 'var(--color-danger)', weight: '40%', raw: `${accPerKm.toFixed(1)} acc/km`,          contrib: 0.40 * (accPerKm / 20) },
-    { label: 'Traffic Volume (AADT)',color: 'var(--color-warn)',   weight: '25%', raw: `${(road.aadt/1000).toFixed(0)}k veh/day`, contrib: 0.25 * (road.aadt / 50000) },
-    { label: 'Speed Limit',          color: 'var(--color-accent)', weight: '20%', raw: `${road.speedKmh} km/h`,                  contrib: 0.20 * (road.speedKmh / 120) },
-    { label: 'Road Condition (inv)', color: 'var(--color-violet)', weight: '15%', raw: `${road.condition} / 5`,                  contrib: 0.15 * ((5 - road.condition) / 4) },
-  ]
+  const breakdown = computeRiskBreakdown(road)
 
   return (
     <>
-      {/* Backdrop */}
       <div
-        className="fixed inset-0 z-40 bg-black/60"
+        className="fixed inset-0 z-40 bg-slate-950/70"
         style={{ backdropFilter: 'blur(3px)' }}
         onClick={onClose}
       />
-
-      {/* Card */}
       <div
-        className="fixed z-50 w-[460px] max-h-[88vh] flex flex-col rounded-xl border shadow-2xl overflow-hidden"
+        className="fixed z-50 w-[480px] max-h-[88vh] flex flex-col rounded-2xl shadow-2xl overflow-hidden"
         style={{
           top: '50%', left: '50%',
           transform: 'translate(-50%, -50%)',
-          background: '#0b1020',
-          borderColor: road.color + '55',
-          boxShadow: `0 0 40px ${road.color}22, 0 25px 60px rgba(0,0,0,0.7)`,
+          background: '#0b1322',
+          boxShadow: `0 0 0 1px ${road.color}55, 0 0 50px ${road.color}22, 0 25px 60px rgba(0,0,0,0.7)`,
           animation: 'loraDrawerIn 0.18s cubic-bezier(0.16,1,0.3,1)',
         }}
       >
-
         {/* Header */}
         <div
           className="flex items-center gap-3 px-5 py-3.5 shrink-0 border-b"
-          style={{ borderBottomColor: road.color + '33', background: road.color + '0d' }}
+          style={{ borderBottomColor: road.color + '33', background: `linear-gradient(180deg, ${road.color}10 0%, transparent 100%)` }}
         >
-          <span className="w-3 h-3 rounded-full shrink-0" style={{ background: road.color, boxShadow: `0 0 8px ${road.color}` }} />
+          <span className="w-2 h-2 rounded-full shrink-0" style={{ background: road.color }} />
           <div className="flex-1 min-w-0">
-            <div className="text-[13px] font-extrabold text-[var(--color-white)] tracking-tight">{road.name}</div>
-            <div className="text-[9px] text-[var(--color-txt3)] uppercase tracking-widest mt-0.5">Road Detail · Risk Analysis</div>
+            <div className="text-[13px] font-semibold text-slate-50 tracking-tight">{road.name}</div>
+            <div className="text-[9.5px] text-slate-500 uppercase tracking-[0.14em] mt-0.5">Road detail · risk analysis</div>
           </div>
           <button
             onClick={onClose}
-            className="w-7 h-7 flex items-center justify-center rounded-md border border-[var(--color-border2)] text-[var(--color-txt2)] hover:bg-[#1a2540] hover:text-white cursor-pointer transition-colors text-[12px] font-bold shrink-0"
+            className="w-7 h-7 flex items-center justify-center rounded-lg ring-1 ring-slate-700 text-slate-400 hover:text-slate-100 hover:bg-slate-800/60 cursor-pointer transition-colors text-[13px] font-medium shrink-0"
           >
             ✕
           </button>
         </div>
 
-        {/* Scrollable body */}
+        {/* Body */}
         <div className="flex-1 overflow-y-auto custom-scroll px-5 py-4 space-y-4">
 
-          {/* Quick stats row */}
+          {/* Quick stats */}
           <div className="grid grid-cols-4 gap-2">
             {[
-              { label: 'Accidents/yr', value: road.accidents, color: 'text-[var(--color-danger)]' },
-              { label: 'AADT',         value: `${(road.aadt/1000).toFixed(0)}k`, color: 'text-[var(--color-warn)]' },
-              { label: 'Speed',        value: `${road.speedKmh}`, color: 'text-[var(--color-accent)]' },
-              { label: 'Condition',    value: `${road.condition}/5`, color: 'text-[var(--color-mint)]' },
-            ].map(s => (
-              <div key={s.label} className="bg-[#0d1630] border border-[var(--color-border)] rounded-lg p-2 text-center">
-                <div className="text-[7px] text-[var(--color-txt3)] uppercase tracking-widest mb-0.5">{s.label}</div>
-                <div className={`text-[15px] font-extrabold font-[var(--font-mono)] ${s.color}`}>{s.value}</div>
+              { label: 'Acc/yr',   value: road.accidents,                    color: '#f87171' },
+              { label: 'AADT',     value: `${(road.aadt/1000).toFixed(0)}k`, color: '#fbbf24' },
+              { label: 'Speed',    value: `${road.speedKmh}`,                color: '#60a5fa' },
+              { label: 'Condition',value: `${road.condition}/5`,             color: '#34d399' },
+            ].map((s) => (
+              <div key={s.label} className="rounded-lg ring-1 ring-slate-800 bg-slate-950/40 px-2 py-2 text-center">
+                <div className="text-[8px] text-slate-500 uppercase tracking-wider mb-0.5">{s.label}</div>
+                <div className="text-[15px] font-mono font-semibold tabular-nums" style={{ color: s.color }}>{s.value}</div>
               </div>
             ))}
           </div>
 
           {/* Description */}
-          <div className="bg-[#0d1630] border border-[var(--color-border)] rounded-lg p-3">
-            <div className="text-[8px] font-bold text-[var(--color-txt3)] uppercase tracking-[0.12em] mb-1.5">Description</div>
-            <p className="text-[11px] text-[var(--color-txt2)] leading-relaxed">{road.description}</p>
+          <div className="rounded-lg ring-1 ring-slate-800 bg-slate-950/40 px-3 py-2.5">
+            <div className="text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-500 mb-1.5">Description</div>
+            <p className="text-[11px] text-slate-300 leading-relaxed">{road.description}</p>
           </div>
 
-          {/* Score breakdown */}
-          <div className="bg-[#0d1630] border border-[var(--color-border)] rounded-lg p-3">
-            <div className="flex items-center justify-between mb-3 pb-2 border-b border-[var(--color-border)]">
-              <div className="text-[8px] font-bold text-[var(--color-txt3)] uppercase tracking-[0.12em]">Risk Score Breakdown (HSM)</div>
-              <span className="text-[16px] font-extrabold font-[var(--font-mono)] text-[var(--color-cyan)]">
-                {(score * 100).toFixed(2)}
+          {/* Risk score breakdown */}
+          <div className="rounded-lg ring-1 ring-slate-800 bg-slate-950/40 px-3 py-3">
+            <div className="flex items-center justify-between mb-2 pb-2 border-b border-slate-800">
+              <div className="text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                Composite risk score — R = 0.40·A + 0.25·T + 0.20·S + 0.15·C
+              </div>
+              <span className="text-[15px] font-mono font-bold tabular-nums" style={{ color: road.color }}>
+                {score.toFixed(3)}
               </span>
             </div>
-
-            <div className="space-y-2.5">
-              {terms.map(t => (
-                <div key={t.label}>
-                  <div className="flex items-center justify-between mb-1">
-                    <div className="flex items-center gap-1.5">
-                      <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: t.color }} />
-                      <span className="text-[9px] text-[var(--color-txt2)]">{t.label}</span>
-                      <span className="text-[7.5px] text-[var(--color-txt3)] font-mono">w={t.weight}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[8.5px] text-[var(--color-txt3)] font-mono">{t.raw}</span>
-                      <span className="text-[9px] font-bold font-mono" style={{ color: t.color }}>+{t.contrib.toFixed(4)}</span>
-                    </div>
-                  </div>
-                  <div className="h-[3px] rounded-full overflow-hidden" style={{ background: '#0a1020' }}>
-                    <div className="h-full rounded-full" style={{ width: `${Math.min((t.contrib / score) * 100, 100)}%`, background: t.color }} />
-                  </div>
+            {/* Term breakdown table */}
+            <div className="w-full text-[10px] font-mono">
+              <div className="grid grid-cols-[1fr_auto_auto_auto_auto] gap-x-2 text-[8.5px] text-slate-600 uppercase tracking-wider mb-1 px-1">
+                <span>Term</span><span>Raw value</span><span>Norm.</span><span>Weight</span><span>Contrib.</span>
+              </div>
+              {breakdown.terms.map((t) => (
+                <div key={t.label} className="grid grid-cols-[1fr_auto_auto_auto_auto] gap-x-2 items-center py-1 px-1 rounded hover:bg-slate-800/40">
+                  <span className="text-slate-300 text-[10px] truncate">{t.label}</span>
+                  <span className="text-slate-500 text-right tabular-nums">{t.raw}</span>
+                  <span className="text-slate-400 text-right tabular-nums">{t.norm.toFixed(3)}</span>
+                  <span className="text-purple-400 text-right tabular-nums">{t.weight.toFixed(2)}</span>
+                  <span className="font-bold text-right tabular-nums" style={{ color: road.color }}>{t.contrib.toFixed(3)}</span>
                 </div>
               ))}
+              <div className="grid grid-cols-[1fr_auto_auto_auto_auto] gap-x-2 items-center pt-1.5 mt-1 border-t border-slate-800 px-1">
+                <span className="text-slate-400 font-semibold">Total R</span>
+                <span /><span /><span />
+                <span className="font-bold text-right tabular-nums" style={{ color: road.color }}>{score.toFixed(3)}</span>
+              </div>
             </div>
+            <p className="mt-2 text-[9.5px] text-slate-600 leading-relaxed">
+              Each term normalised to [0,1] against reference values (20 acc/yr, 50k veh/day, 120 km/h, condition 1–5).
+              Ref: Hauer 1997; AASHTO HSM 2010 Ch.4.
+            </p>
           </div>
 
           {/* Allocation result */}
-          <div className="bg-[#0d1630] border border-[var(--color-border)] rounded-lg p-3">
-            <div className="text-[8px] font-bold text-[var(--color-txt3)] uppercase tracking-[0.12em] mb-2.5">Drone Allocation Result</div>
+          <div className="rounded-lg ring-1 ring-slate-800 bg-slate-950/40 px-3 py-3">
+            <div className="text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-500 mb-2.5">Drone allocation</div>
             <div className="grid grid-cols-3 gap-2">
-              <div className="bg-[#090e1e] rounded-lg p-2 text-center">
-                <div className="text-[7px] text-[var(--color-txt3)] uppercase tracking-widest mb-0.5">Assigned</div>
-                <div className="text-[20px] font-extrabold font-mono" style={{ color: road.color }}>
-                  {drones}
-                </div>
-                <div className="text-[8px] text-[var(--color-txt3)]">drone{drones !== 1 ? 's' : ''}</div>
+              <div className="rounded-md bg-slate-900/60 px-2 py-2 text-center">
+                <div className="text-[8px] text-slate-500 uppercase tracking-wider mb-0.5">Assigned</div>
+                <div className="text-[20px] font-mono font-semibold tabular-nums" style={{ color: road.color }}>{drones}</div>
+                <div className="text-[8px] text-slate-500">drone{drones !== 1 ? 's' : ''}</div>
               </div>
-              <div className="bg-[#090e1e] rounded-lg p-2 text-center">
-                <div className="text-[7px] text-[var(--color-txt3)] uppercase tracking-widest mb-0.5">Exact</div>
-                <div className="text-[14px] font-extrabold font-mono text-[var(--color-cyan)]">{exact.toFixed(3)}</div>
-                <div className="text-[8px] text-[var(--color-txt3)]">proportional</div>
+              <div className="rounded-md bg-slate-900/60 px-2 py-2 text-center">
+                <div className="text-[8px] text-slate-500 uppercase tracking-wider mb-0.5">Exact</div>
+                <div className="text-[14px] font-mono font-semibold text-slate-100 tabular-nums">{exact.toFixed(3)}</div>
+                <div className="text-[8px] text-slate-500">proportional</div>
               </div>
-              <div className="bg-[#090e1e] rounded-lg p-2 text-center">
-                <div className="text-[7px] text-[var(--color-txt3)] uppercase tracking-widest mb-0.5">Risk share</div>
-                <div className="text-[14px] font-extrabold font-mono text-[var(--color-violet)]">{percentage.toFixed(1)}%</div>
-                <div className="text-[8px] text-[var(--color-txt3)]">of total</div>
+              <div className="rounded-md bg-slate-900/60 px-2 py-2 text-center">
+                <div className="text-[8px] text-slate-500 uppercase tracking-wider mb-0.5">Risk share</div>
+                <div className="text-[14px] font-mono font-semibold text-purple-300 tabular-nums">{percentage.toFixed(1)}%</div>
+                <div className="text-[8px] text-slate-500">of total</div>
               </div>
             </div>
-
             <div className="mt-2.5 flex items-center gap-2">
-              <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ background: '#0a1020' }}>
+              <div className="flex-1 h-1.5 rounded-full overflow-hidden bg-slate-900">
                 <div className="h-full rounded-full" style={{ width: `${Math.min(percentage, 100)}%`, background: road.color }} />
               </div>
-              <span className="text-[9px] font-mono shrink-0" style={{ color: road.color }}>{road.lengthKm} km</span>
+              <span className="text-[10px] font-mono shrink-0 text-slate-400">{road.lengthKm} km</span>
             </div>
           </div>
 
           {/* Source */}
-          <div className="bg-[#0a0e1c] border border-[var(--color-border)] rounded-lg p-3">
-            <div className="text-[8px] font-bold text-[var(--color-txt3)] uppercase tracking-[0.12em] mb-1.5">Data Source</div>
-            <p className="text-[9.5px] text-[var(--color-txt3)] leading-relaxed italic">{road.source}</p>
+          <div className="rounded-lg ring-1 ring-amber-500/25 bg-amber-500/[0.04] px-3 py-2">
+            <div className="flex items-center gap-1.5 mb-1">
+              <div className="text-[8.5px] font-semibold uppercase tracking-[0.14em] text-amber-300/90">Data status</div>
+            </div>
+            <p className="text-[9.5px] text-slate-300 leading-relaxed">{road.source}</p>
+            <p className="text-[8.5px] text-slate-500 leading-relaxed mt-1.5 italic">
+              See the page-level "Data sources &amp; citation status" panel for the
+              full disclosure of which inputs are synthetic vs. extracted, and how
+              each source is cited in the thesis.
+            </p>
           </div>
-
         </div>
 
-        {/* Footer */}
-        <div className="px-5 py-3 border-t border-[var(--color-border)] shrink-0">
+        <div className="px-5 py-3 border-t border-slate-800 shrink-0">
           <button
             onClick={onClose}
-            className="w-full py-2 rounded-md text-[11px] font-bold tracking-wide cursor-pointer hover:opacity-90 transition-opacity text-white"
+            className="w-full py-2 rounded-lg text-[11px] font-semibold cursor-pointer hover:opacity-90 transition-opacity text-white"
             style={{ background: road.color }}
           >
             Close
           </button>
         </div>
-
       </div>
     </>
   )
 }
 
-// ─── Road row card ────────────────────────────────────────────────────────────
-function RoadRow({ item, isSelected, onSelect, onOpenDetail }) {
-  const { road, score, drones, percentage } = item
+// ─── Road row ────────────────────────────────────────────────────────────────
+function RoadRow({ item, isSelected, onSelect, onOpenDetail, totalDrones }) {
+  const { road, score, drones, percentage, exact } = item
   const unpatrolled = drones === 0
 
   return (
     <div
-      className="w-full bg-[var(--color-card)] border border-[var(--color-border)] rounded-md p-2.5 mb-1.5 transition-all hover:border-[var(--color-border2)]"
-      style={{ borderLeftWidth: 3, borderLeftColor: isSelected ? road.color : 'transparent' }}
+      role="button"
+      tabIndex={0}
+      onClick={() => onSelect(road.id)}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(road.id) } }}
+      className={`w-full text-left rounded-lg ring-1 px-3 py-2.5 transition-all cursor-pointer
+        ${isSelected
+          ? 'bg-slate-900/60 ring-slate-700'
+          : 'bg-slate-950/40 ring-slate-800 hover:bg-slate-900/40 hover:ring-slate-700'}`}
+      style={isSelected ? { boxShadow: `inset 3px 0 0 ${road.color}` } : undefined}
     >
-      {/* Row header */}
-      <div className="flex items-center justify-between mb-1 gap-2">
-        <button
-          onClick={() => onSelect(road.id)}
-          className="flex items-center gap-1.5 min-w-0 cursor-pointer"
-        >
-          <span className="text-[11px] font-bold font-[var(--font-mono)] truncate" style={{ color: road.color }}>
-            {road.shortName}
-          </span>
-        </button>
-
+      <div className="flex items-center justify-between gap-2 mb-1.5">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: road.color }} />
+          <span className="text-[11.5px] font-medium text-slate-100 truncate">{road.shortName}</span>
+        </div>
         <div className="flex items-center gap-1.5 shrink-0">
           <span
-            className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${unpatrolled ? 'text-[var(--color-danger)] bg-[#450a0a]' : ''}`}
-            style={unpatrolled ? {} : { background: road.color + '22', color: road.color }}
+            className="text-[9px] font-mono font-semibold px-1.5 py-0.5 rounded ring-1 tabular-nums"
+            style={unpatrolled
+              ? { background: 'rgba(248,113,113,0.10)', color: '#fca5a5', boxShadow: 'inset 0 0 0 1px rgba(248,113,113,0.30)' }
+              : { background: road.color + '14', color: road.color, boxShadow: `inset 0 0 0 1px ${road.color}33` }}
           >
-            {unpatrolled ? '✗ unpatrolled' : `${drones} drone${drones !== 1 ? 's' : ''}`}
+            {unpatrolled ? '✗ none' : `× ${drones}`}
           </span>
           <button
-            onClick={() => onOpenDetail(item)}
-            className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wide border cursor-pointer transition-all hover:text-white"
-            style={{
-              borderColor: road.color + '44',
-              color: road.color,
-              background: road.color + '10',
-            }}
-            title="View full details"
+            onClick={(e) => { e.stopPropagation(); onOpenDetail(item) }}
+            className="text-[9px] font-medium uppercase tracking-wider text-slate-400 hover:text-slate-100 px-1.5 py-0.5 rounded ring-1 ring-slate-700 hover:ring-slate-500 cursor-pointer"
           >
             Detail ↗
           </button>
         </div>
       </div>
 
-      {/* Quick stats */}
-      <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[9px] text-[var(--color-txt2)] mb-1.5">
+      {/* Stats row */}
+      <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[9.5px] text-slate-500 mb-1.5 font-mono">
         <span>{road.accidents} acc/yr</span>
+        <span className="text-slate-700">·</span>
         <span>{(road.aadt / 1000).toFixed(0)}k AADT</span>
+        <span className="text-slate-700">·</span>
         <span>{road.speedKmh} km/h</span>
+        <span className="text-slate-700">·</span>
         <span>{road.lengthKm} km</span>
-        <span>{road.condition}/5 cond</span>
       </div>
 
-      {/* Risk bar */}
+      {/* Crash-frequency bar with allocation share */}
       <div className="flex items-center gap-2">
-        <div className="flex-1 h-[3px] rounded-full bg-[#0c1020] overflow-hidden">
-          <div className="h-full rounded-full" style={{ width: `${Math.min(percentage, 100)}%`, background: road.color }} />
+        <div className="flex-1 h-[4px] rounded-full bg-slate-900/80 overflow-hidden">
+          <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(percentage, 100)}%`, background: road.color }} />
         </div>
-        <span className="text-[9px] font-[var(--font-mono)] text-[var(--color-txt2)] shrink-0 min-w-[38px] text-right">
-          {percentage.toFixed(1)}%
+        <span className="text-[9.5px] font-mono text-slate-400 shrink-0 min-w-[100px] text-right tabular-nums">
+          R={score.toFixed(3)}<span className="text-slate-600"> · </span>{percentage.toFixed(1)}%
         </span>
       </div>
+
+      {/* Allocation hint — show how the integer count came from the exact value */}
+      <div className="mt-1.5 text-[9px] text-slate-500 font-mono">
+        exact = {exact.toFixed(3)} → ⌊·⌋ = {Math.floor(exact)}
+        {drones > Math.floor(exact) && <span className="text-emerald-400/80"> +1 (largest remainder)</span>}
+      </div>
     </div>
   )
 }
 
-// ─── Formula / algorithm info panel ──────────────────────────────────────────
-function FormulaPanel() {
-  const [open, setOpen] = useState(true)
-  return (
-    <div className="border-t border-[var(--color-border)] shrink-0">
-      <button
-        onClick={() => setOpen(o => !o)}
-        className="w-full text-left px-3 py-2 text-[10px] font-bold text-[var(--color-txt2)] uppercase tracking-widest bg-transparent hover:bg-[#111827] cursor-pointer transition-colors"
-      >
-        {open ? '▾' : '▸'} Partition Algorithm
-      </button>
-      {open && (
-        <div className="px-3 pb-3">
-          <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-md p-3">
-            <div className="text-[8px] font-bold text-[var(--color-txt3)] uppercase tracking-widest mb-2">
-              Highway Safety Manual (HSM) — Adapted
-            </div>
-            <div className="font-[var(--font-mono)] text-[9px] leading-loose mb-3">
-              <div className="text-[var(--color-txt2)] mb-0.5">score<sub>i</sub> =</div>
-              <div className="pl-3"><span className="text-[var(--color-danger)]">0.40</span><span className="text-[var(--color-txt3)]"> × (acc/km ÷ 20)</span></div>
-              <div className="pl-3"><span className="text-[var(--color-txt3)]">+ </span><span className="text-[var(--color-warn)]">0.25</span><span className="text-[var(--color-txt3)]"> × (AADT ÷ 50,000)</span></div>
-              <div className="pl-3"><span className="text-[var(--color-txt3)]">+ </span><span className="text-[var(--color-accent)]">0.20</span><span className="text-[var(--color-txt3)]"> × (speed km/h ÷ 120)</span></div>
-              <div className="pl-3"><span className="text-[var(--color-txt3)]">+ </span><span className="text-[var(--color-violet)]">0.15</span><span className="text-[var(--color-txt3)]"> × ((5 − condition) ÷ 4)</span></div>
-            </div>
-            <div className="font-[var(--font-mono)] text-[9px] leading-loose text-[var(--color-txt2)]">
-              <div className="text-[8px] font-bold text-[var(--color-txt3)] uppercase tracking-widest mb-1">Allocation (Largest Remainder)</div>
-              <div className="pl-3"><span className="text-[var(--color-mint)]">alloc<sub>i</sub></span><span className="text-[var(--color-txt3)]"> = floor(N × score<sub>i</sub> / Σscore)</span></div>
-              <div className="pl-3"><span className="text-[var(--color-txt3)]">remaining drones → highest fractional remainders</span></div>
-            </div>
-            <div className="mt-2 pt-2 border-t border-[var(--color-border)] text-[8px] text-[var(--color-txt3)] leading-relaxed">
-              Weights sum to 1.0. Integer counts guaranteed to sum exactly to fleet size.
-              Data: ISF Annual Report 2022, AUB Road Safety Observatory 2021.
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ─── Main export ──────────────────────────────────────────────────────────────
+// ─── Main panel ──────────────────────────────────────────────────────────────
 export default function StatsPanel({ allocations, selectedRoadId, onSelectRoad, droneCount }) {
   const [detailItem, setDetailItem] = useState(null)
+  const [showAlgo, setShowAlgo] = useState(false)
 
   if (!allocations?.length) return null
-
-  const totalScore = allocations.reduce((s, a) => s + a.score, 0)
-  const unpatrolledCount = allocations.filter(a => a.drones === 0).length
-  const maxRiskRoad = allocations[0]
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
 
-      {/* Summary chips */}
-      <div className="px-3 py-2.5 border-b border-[var(--color-border)] shrink-0">
-        <div className="grid grid-cols-4 gap-1.5">
-          <StatChip label="Fleet"       value={droneCount}                       color="text-[var(--color-cyan)]" />
-          <StatChip label="Roads"       value={allocations.length}               color="text-[var(--color-white)]" />
-          <StatChip label="∑ Risk"      value={(totalScore * 100).toFixed(1)}    color="text-[var(--color-warn)]" />
-          <StatChip label="Unpatrolled" value={unpatrolledCount}
-            color={unpatrolledCount > 0 ? 'text-[var(--color-danger)]' : 'text-[var(--color-mint)]'} />
-        </div>
-
-        {/* Highest risk callout */}
-        <div
-          className="mt-2 px-2.5 py-1.5 rounded-md border text-[9px] flex items-center justify-between"
-          style={{ borderColor: maxRiskRoad.road.color + '55', background: maxRiskRoad.road.color + '0d' }}
-        >
-          <span className="text-[var(--color-txt2)]">Highest risk →</span>
-          <span className="font-bold" style={{ color: maxRiskRoad.road.color }}>{maxRiskRoad.road.shortName}</span>
-          <span className="font-[var(--font-mono)] text-[var(--color-cyan)]">{(maxRiskRoad.score * 100).toFixed(1)} / 100</span>
-          <span style={{ color: maxRiskRoad.road.color }} className="font-bold">
-            {maxRiskRoad.drones} drone{maxRiskRoad.drones !== 1 ? 's' : ''}
+      {/* Section header */}
+      <div className="flex items-center justify-between gap-3 px-5 py-3 border-b border-slate-800/70 shrink-0">
+        <div className="flex items-center gap-2.5">
+          <span className="w-1.5 h-1.5 rounded-full bg-purple-400" />
+          <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-200">
+            Allocation breakdown
           </span>
+          <span className="text-slate-700 text-[10px]">/</span>
+          <span className="text-[10px] text-slate-500 font-mono">{allocations.length} roads · {droneCount} drones</span>
         </div>
+        <button
+          onClick={() => setShowAlgo((s) => !s)}
+          className="text-[10px] font-medium text-slate-400 hover:text-slate-200 cursor-pointer flex items-center gap-1.5 px-2 py-1 rounded-md hover:bg-slate-800/60 transition-colors"
+        >
+          <span className="text-slate-500">{showAlgo ? '▾' : '▸'}</span>
+          {showAlgo ? 'Hide' : 'Show'} algorithm
+        </button>
       </div>
 
+      {/* Optional algorithm panel */}
+      {showAlgo && (
+        <div className="px-5 py-3 border-b border-slate-800/70 shrink-0 bg-slate-950/40">
+          <div className="text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-500 mb-2">
+            Crash-frequency allocation · Hamilton largest remainder
+          </div>
+          <div className="font-mono text-[10px] leading-relaxed text-slate-400 space-y-1">
+            <div>1.  <span className="text-slate-300">risk<sub>i</sub></span> = accidents<sub>i</sub> per year <span className="text-slate-500">(black-spot principle)</span></div>
+            <div>2.  <span className="text-slate-300">exact<sub>i</sub></span> = N · risk<sub>i</sub> / ∑ risk</div>
+            <div>3.  <span className="text-slate-300">alloc<sub>i</sub></span> = ⌊exact<sub>i</sub>⌋ <span className="text-slate-500">(integer floor)</span></div>
+            <div>4.  Distribute leftover drones to roads with the largest fractional part</div>
+          </div>
+          <div className="mt-2.5 pt-2 border-t border-slate-800 text-[9px] text-slate-500 leading-relaxed">
+            Integer counts always sum exactly to the fleet size. No road can be over-allocated.
+          </div>
+          <div className="mt-1.5 text-[9px] text-slate-500 leading-relaxed">
+            References: AASHTO HSM 2010, Ch. 4 (network screening by crash frequency);
+            Hauer 1997. Hamilton method: Balinski &amp; Young, <em>Fair Representation</em>
+            (Yale, 1982).
+          </div>
+        </div>
+      )}
+
       {/* Road list */}
-      <div className="flex-1 overflow-y-auto custom-scroll px-3 py-2 min-h-0">
-        <Label>Allocation — click road to highlight · Detail ↗ to inspect</Label>
-        {allocations.map(item => (
+      <div className="flex-1 overflow-y-auto custom-scroll px-3 py-3 min-h-0 space-y-1.5">
+        {allocations.map((item) => (
           <RoadRow
             key={item.road.id}
             item={item}
             isSelected={item.road.id === selectedRoadId}
             onSelect={onSelectRoad}
             onOpenDetail={setDetailItem}
+            totalDrones={droneCount}
           />
         ))}
       </div>
 
-      <FormulaPanel />
-
-      {/* Road detail popup */}
       {detailItem && (
         <RoadDetailPopup item={detailItem} onClose={() => setDetailItem(null)} />
       )}
-
     </div>
   )
 }

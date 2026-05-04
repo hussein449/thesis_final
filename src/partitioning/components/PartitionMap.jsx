@@ -41,7 +41,19 @@ function interpolate(coords, t) {
 // ────────────────────────────────────────────────────────────────────────────
 // Component
 // ────────────────────────────────────────────────────────────────────────────
-export default function PartitionMap({ allocations, selectedRoadId, onSelectRoad }) {
+// Interpolate green → yellow → red based on t ∈ [0,1]
+function heatColor(t) {
+  const c = Math.max(0, Math.min(1, t))
+  if (c < 0.5) {
+    const r = Math.round(c * 2 * 255)
+    return `rgb(${r},220,60)`
+  } else {
+    const g = Math.round((1 - (c - 0.5) * 2) * 220)
+    return `rgb(255,${g},30)`
+  }
+}
+
+export default function PartitionMap({ allocations, selectedRoadId, onSelectRoad, heatmap = false }) {
   const mapRef = useRef(null)
   const mapInstanceRef = useRef(null)
   const polylinesRef = useRef({})
@@ -60,7 +72,7 @@ export default function PartitionMap({ allocations, selectedRoadId, onSelectRoad
     return () => { map.remove(); mapInstanceRef.current = null }
   }, []) // eslint-disable-line
 
-  // Redraw polylines when allocations change
+  // Redraw polylines when allocations or heatmap mode change
   useEffect(() => {
     const map = mapInstanceRef.current
     if (!map || !allocations?.length) return
@@ -68,11 +80,14 @@ export default function PartitionMap({ allocations, selectedRoadId, onSelectRoad
     Object.values(polylinesRef.current).forEach(pl => pl.remove())
     polylinesRef.current = {}
 
+    const maxScore = Math.max(...allocations.map(a => a.score))
+
     allocations.forEach(({ road, score, drones }) => {
       const isSelected = road.id === selectedRoadId
+      const color = heatmap ? heatColor(score / maxScore) : road.color
 
       const pl = L.polyline(road.polyline, {
-        color: road.color,
+        color,
         weight: isSelected ? 9 : 5,
         opacity: drones === 0 ? 0.35 : isSelected ? 1.0 : 0.80,
       }).addTo(map)
@@ -80,11 +95,11 @@ export default function PartitionMap({ allocations, selectedRoadId, onSelectRoad
       pl.on('click', () => onSelectRoad(road.id))
       pl.bindTooltip(
         `<div style="font-family:Outfit,sans-serif;font-size:11px;
-          color:#e8edf5;background:#0c101a;border:1px solid ${road.color}55;
+          color:#e8edf5;background:#0c101a;border:1px solid ${color}88;
           padding:5px 10px;border-radius:7px;white-space:nowrap">
-          <strong style="color:${road.color}">${road.name}</strong><br/>
-          <span style="color:#4e6080">Risk&nbsp;</span>
-          <span style="color:#22d3ee;font-family:JetBrains Mono,monospace">${(score * 100).toFixed(1)}</span>
+          <strong style="color:${color}">${road.name}</strong><br/>
+          <span style="color:#4e6080">Risk R&nbsp;</span>
+          <span style="color:#22d3ee;font-family:JetBrains Mono,monospace">${score.toFixed(3)}</span>
           <span style="color:#4e6080"> &nbsp;·&nbsp; Drones&nbsp;</span>
           <span style="color:#22d3ee;font-family:JetBrains Mono,monospace">${drones}</span>
         </div>`,
@@ -93,7 +108,7 @@ export default function PartitionMap({ allocations, selectedRoadId, onSelectRoad
 
       polylinesRef.current[road.id] = pl
     })
-  }, [allocations]) // eslint-disable-line
+  }, [allocations, heatmap]) // eslint-disable-line
 
   // Highlight selected polyline on click without full redraw
   useEffect(() => {
@@ -105,7 +120,7 @@ export default function PartitionMap({ allocations, selectedRoadId, onSelectRoad
       pl.setStyle({ weight: isSelected ? 9 : 5, opacity: drones === 0 ? 0.35 : isSelected ? 1.0 : 0.80 })
       if (isSelected) pl.bringToFront()
     })
-  }, [selectedRoadId, allocations])
+  }, [selectedRoadId, allocations, heatmap])
 
   // Place drone markers
   useEffect(() => {

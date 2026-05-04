@@ -1,14 +1,14 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { createSimulation } from './lib/simulation'
 import { renderCanvas } from './lib/renderer'
-import { SCENARIOS } from './lora/lib/lora'
+// import { SCENARIOS } from './lora/lib/lora'
 import Controls from './components/Controls'
 import SOSPanel from './components/SOSPanel'
 import CommLog from './components/CommLog'
 import FleetGrid from './components/FleetGrid'
 import Settings from './components/Settings'
 import Results from './components/ResultsPage'
-import LoraApp from './lora/LoraApp'
+// import LoraApp from './lora/LoraApp'
 import PartitionPage from './partitioning/PartitionPage'
 import DetectionPage from './detection/DetectionPage'
 
@@ -36,7 +36,7 @@ function AppHeader({
     { key: 'detection', label: 'Operations',          icon: '◇' },
     { key: 'partition', label: 'Risk Partitioning',   icon: '⬡' },
     { key: 'sim',       label: 'Dispatch Protocol',   icon: '◈' },
-    { key: 'lora',      label: 'Link Budget',         icon: '◉' },
+    // { key: 'lora',      label: 'Link Budget',         icon: '◉' },
   ]
 
   const simPhase =
@@ -54,7 +54,7 @@ function AppHeader({
     : '#4e6080'
 
   return (
-    <header className="flex items-center gap-0 h-[50px] shrink-0 bg-[#020508] border-b border-[var(--color-border)] px-4">
+    <header className="flex items-center gap-0 h-[50px] shrink-0 bg-[#020508] border-b border-[var(--color-border)] px-4 overflow-x-auto">
 
       {/* ── Branding ── */}
       <div className="flex items-center gap-2.5 shrink-0 pr-4 border-r border-[var(--color-border)]">
@@ -168,6 +168,7 @@ function AppHeader({
         </>}
 
         {/* LORA page */}
+        {/*
         {page === 'lora' && <>
           {Object.entries(SCENARIOS).map(([key, sc]) => (
             <button
@@ -199,20 +200,17 @@ function AppHeader({
             <GearIcon /> Settings
           </button>
         </>}
+        */}
 
         {/* PARTITION page */}
         {page === 'partition' && <>
-          <span className="text-[10px] text-[var(--color-txt3)] shrink-0 uppercase tracking-widest font-semibold">Fleet size</span>
-          <input
-            type="range" min={3} max={20} step={1} value={partitionDroneCount}
-            onChange={e => onPartitionDroneCount(parseInt(e.target.value))}
-            className="w-28 shrink-0"
-          />
-          <div className="flex items-center gap-1 shrink-0">
-            <span className="text-[18px] font-bold font-[var(--font-mono)] text-[var(--color-cyan)] leading-none">{partitionDroneCount}</span>
-            <span className="text-[9px] text-[var(--color-txt3)]">drones</span>
-          </div>
+          <span className="text-[10px] text-[var(--color-txt3)] hidden sm:inline">
+            Risk-proportional allocation · Hamilton / Largest-Remainder
+          </span>
           <div className="flex-1" />
+          <span className="text-[9px] text-[var(--color-txt3)] uppercase tracking-widest font-semibold shrink-0">Fleet</span>
+          <span className="text-[15px] font-bold font-mono text-[var(--color-cyan)] leading-none shrink-0">{partitionDroneCount}</span>
+          <span className="text-[9px] text-[var(--color-txt3)] shrink-0">UAVs</span>
         </>}
 
       </div>
@@ -293,12 +291,15 @@ export default function App() {
   const [showSimSettings, setShowSimSettings] = useState(false)
 
   /* Lifted LoRa state */
-  const [loraScenario, setLoraScenario] = useState('urban')
-  const [showLoraGraphs, setShowLoraGraphs] = useState(false)
-  const [showLoraSettings, setShowLoraSettings] = useState(false)
+  // const [loraScenario, setLoraScenario] = useState('urban')
+  // const [showLoraGraphs, setShowLoraGraphs] = useState(false)
+  // const [showLoraSettings, setShowLoraSettings] = useState(false)
 
   /* Lifted Partition state */
   const [partitionDroneCount, setPartitionDroneCount] = useState(8)
+
+  /* Dispatch protocol — fleet status popup toggle */
+  const [showFleetModal, setShowFleetModal] = useState(false)
 
   useEffect(() => { sim.setConfig(config) }, [config])
   useEffect(() => { sim.setSeverity(severity) }, [severity])
@@ -360,9 +361,9 @@ export default function App() {
     simState: s.simState, simMs: s.simMs, severity, primaryIdx: s.primaryIdx, simDrones: s.drones,
     onOpenSimSettings: () => setShowSimSettings(true),
     onNavigateResults: () => setPage('results'),
-    loraScenario, onLoraScenario: setLoraScenario,
-    showLoraGraphs, onToggleLoraGraphs: () => setShowLoraGraphs(g => !g),
-    onOpenLoraSettings: () => setShowLoraSettings(true),
+    // loraScenario, onLoraScenario: setLoraScenario,
+    // showLoraGraphs, onToggleLoraGraphs: () => setShowLoraGraphs(g => !g),
+    // onOpenLoraSettings: () => setShowLoraSettings(true),
     partitionDroneCount, onPartitionDroneCount: setPartitionDroneCount,
   }
 
@@ -384,6 +385,7 @@ export default function App() {
     )
   }
 
+  /*
   if (page === 'lora') {
     return (
       <div className="min-h-screen bg-[var(--color-bg)] flex flex-col">
@@ -397,6 +399,7 @@ export default function App() {
       </div>
     )
   }
+  */
 
   if (page === 'partition') {
     return (
@@ -430,39 +433,33 @@ export default function App() {
         onSeverity={setSeverity}
       />
 
-      {/* ── Main workspace ──────────────────────────────── */}
-      <div className="flex flex-1 min-h-0">
+      {/* ── Main workspace ── */}
+      <div className="flex flex-1 min-h-0 overflow-hidden">
 
         {/* Viewport column */}
         <div className="flex flex-col flex-1 min-w-0 min-h-0 border-r border-[var(--color-border)]">
 
           {/* Viewport info strip */}
-          <div className="flex items-center gap-3 px-4 py-[6px] bg-[#030b14] border-b border-[var(--color-border)] shrink-0">
-            <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3 px-4 py-[6px] bg-[#030b14] border-b border-[var(--color-border)] shrink-0 overflow-x-auto">
+            <div className="flex items-center gap-2 shrink-0">
               <span
                 className="w-[7px] h-[7px] rounded-full shrink-0 transition-all duration-300"
-                style={{
-                  background: simPhaseColor,
-                  boxShadow: s.simState !== 'idle' ? `0 0 7px ${simPhaseColor}bb` : 'none',
-                }}
+                style={{ background: simPhaseColor, boxShadow: s.simState !== 'idle' ? `0 0 7px ${simPhaseColor}bb` : 'none' }}
               />
-              <span className="text-[8.5px] font-bold text-[var(--color-txt3)] uppercase tracking-[0.15em]">
+              <span className="text-[8.5px] font-bold text-[var(--color-txt3)] uppercase tracking-[0.15em] whitespace-nowrap">
                 Dispatch Protocol Demo
               </span>
               <span className="text-[var(--color-border2)] text-[9px]">·</span>
-              <span className="text-[8.5px] text-[var(--color-txt3)]">CNP single-incident view</span>
+              <span className="text-[8.5px] text-[var(--color-txt3)] whitespace-nowrap">CNP single-incident view</span>
             </div>
-
             <div className="w-px h-3 bg-[var(--color-border2)] shrink-0" />
-
             <div
-              className="flex items-center gap-1.5 px-2 py-[2px] rounded-full border text-[8px] font-bold uppercase tracking-wide"
+              className="flex items-center gap-1.5 px-2 py-[2px] rounded-full border text-[8px] font-bold uppercase tracking-wide shrink-0"
               style={{ color: simPhaseColor, borderColor: simPhaseColor + '44', background: simPhaseColor + '12' }}
             >
               {simPhaseLabel}
             </div>
-
-            <div className="flex items-center gap-4 font-[var(--font-mono)] text-[8.5px]">
+            <div className="flex items-center gap-4 font-[var(--font-mono)] text-[8.5px] shrink-0">
               <span className="text-[var(--color-txt3)]">
                 Fleet <span className="text-[var(--color-cyan)] font-bold ml-0.5">{s.drones.length + s.reserveDrones.length}</span>
               </span>
@@ -475,8 +472,7 @@ export default function App() {
                 </span>
               )}
             </div>
-
-            <div className="ml-auto flex items-center gap-1.5 font-[var(--font-mono)] text-[8.5px]">
+            <div className="ml-auto flex items-center gap-1.5 font-[var(--font-mono)] text-[8.5px] shrink-0">
               <span className="text-[var(--color-txt3)] uppercase tracking-wider">T+</span>
               <span className="text-[var(--color-white)] font-bold tabular-nums">
                 {String(Math.floor(s.simMs)).padStart(6, '0')}<span className="text-[var(--color-txt3)] font-normal">ms</span>
@@ -493,22 +489,63 @@ export default function App() {
               style={{ boxShadow: '0 0 40px rgba(0,0,0,0.6)' }}
             />
           </div>
-
         </div>
 
-        {/* ── Right sidebar ──────────────────────────────── */}
-        <div className="w-[390px] shrink-0 flex flex-col min-h-0 overflow-hidden bg-[var(--color-bg2)]">
-          <FleetGrid drones={s.drones} reserves={s.reserveDrones} state={s} />
+        {/* ── Right sidebar ── */}
+        <div className="w-[340px] xl:w-[390px] shrink-0 flex flex-col min-h-0 overflow-hidden bg-[var(--color-bg2)]">
+          <button
+            onClick={() => setShowFleetModal(true)}
+            className="flex items-center gap-2 px-3.5 py-2 bg-[var(--color-card)] border-b border-[var(--color-border)] shrink-0 hover:bg-[#111827] transition-colors cursor-pointer text-left"
+          >
+            <span className="w-1.5 h-1.5 rounded-full shrink-0"
+              style={{ background: s.drones.some(d => d.state !== 'idle') ? '#f59e0b' : '#14b8a6' }} />
+            <span className="text-[9px] font-bold text-[var(--color-txt2)] uppercase tracking-[0.12em]">Fleet Status</span>
+            <span className="text-[8px] text-[var(--color-txt3)] font-[var(--font-mono)]">
+              {s.drones.filter(d => d.state !== 'idle').length}/{s.drones.length} active
+            </span>
+            <span className="ml-auto flex items-center gap-1 text-[8.5px] font-bold uppercase tracking-wider text-[var(--color-accent)]">
+              View <span className="text-[10px] leading-none">▸</span>
+            </span>
+          </button>
           <SOSPanel state={s} />
           <CommLog logs={s.logs} count={s.logCounter} />
         </div>
-
       </div>
 
       <Settings
         open={showSimSettings} onClose={() => setShowSimSettings(false)}
         config={config} onChange={handleConfigChange}
       />
+
+      {showFleetModal && (
+        <>
+          <div
+            className="fixed inset-0 bg-black/60 z-40"
+            style={{ backdropFilter: 'blur(2px)' }}
+            onClick={() => setShowFleetModal(false)}
+          />
+          <div
+            className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[860px] max-w-[92vw] h-[600px] max-h-[85vh] bg-[var(--color-bg)] border border-[var(--color-border)] rounded-lg z-50 flex flex-col shadow-2xl overflow-hidden"
+            style={{ animation: 'loraDrawerIn 0.22s cubic-bezier(0.16,1,0.3,1)' }}
+          >
+            <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--color-border)] shrink-0 bg-gradient-to-b from-[#0a0e1a] to-[var(--color-bg)]">
+              <div className="flex items-center gap-2.5">
+                <span className="w-2 h-2 rounded-full"
+                  style={{ background: s.drones.some(d => d.state !== 'idle') ? '#f59e0b' : '#14b8a6' }} />
+                <span className="text-[12px] font-extrabold text-[var(--color-white)] tracking-tight">Fleet Status</span>
+                <span className="text-[9px] text-[var(--color-txt3)] uppercase tracking-widest">Drone telemetry</span>
+              </div>
+              <button
+                onClick={() => setShowFleetModal(false)}
+                className="w-8 h-8 flex items-center justify-center rounded-md border border-[var(--color-border2)] text-[var(--color-txt2)] hover:bg-[#1a2540] hover:text-white cursor-pointer transition-colors text-[13px] font-bold"
+              >
+                ✕
+              </button>
+            </div>
+            <FleetGrid drones={s.drones} reserves={s.reserveDrones} state={s} wide />
+          </div>
+        </>
+      )}
     </div>
   )
 }

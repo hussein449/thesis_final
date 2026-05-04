@@ -3,8 +3,8 @@ import { DEFAULT_PARAMS } from '../lib/detection-sim'
 
 function NumberField({ label, value, onChange, hint, min, max, step = 1 }) {
   return (
-    <label className="flex flex-col gap-1">
-      <span className="text-[9px] text-[var(--color-txt3)] uppercase tracking-wider font-semibold">
+    <label className="flex flex-col gap-1.5">
+      <span className="text-[9px] text-slate-500 uppercase tracking-[0.14em] font-semibold">
         {label}
       </span>
       <input
@@ -14,10 +14,10 @@ function NumberField({ label, value, onChange, hint, min, max, step = 1 }) {
         min={min}
         max={max}
         step={step}
-        className="bg-[#0a0e1a] border border-[var(--color-border2)] rounded px-2 py-1 text-[11px] font-mono text-[var(--color-txt)] focus:outline-none focus:border-[var(--color-accent)]"
+        className="bg-slate-950/60 ring-1 ring-slate-800 rounded-lg px-2.5 py-1.5 text-[12px] font-mono text-slate-100 focus:outline-none focus:ring-blue-400/60 transition"
       />
       {hint && (
-        <span className="text-[9px] text-[var(--color-txt3)]">{hint}</span>
+        <span className="text-[9px] text-slate-500">{hint}</span>
       )}
     </label>
   )
@@ -25,18 +25,18 @@ function NumberField({ label, value, onChange, hint, min, max, step = 1 }) {
 
 function TextField({ label, value, onChange, hint }) {
   return (
-    <label className="flex flex-col gap-1">
-      <span className="text-[9px] text-[var(--color-txt3)] uppercase tracking-wider font-semibold">
+    <label className="flex flex-col gap-1.5">
+      <span className="text-[9px] text-slate-500 uppercase tracking-[0.14em] font-semibold">
         {label}
       </span>
       <input
         type="text"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="bg-[#0a0e1a] border border-[var(--color-border2)] rounded px-2 py-1 text-[11px] font-mono text-[var(--color-txt)] focus:outline-none focus:border-[var(--color-accent)]"
+        className="bg-slate-950/60 ring-1 ring-slate-800 rounded-lg px-2.5 py-1.5 text-[12px] font-mono text-slate-100 focus:outline-none focus:ring-blue-400/60 transition"
       />
       {hint && (
-        <span className="text-[9px] text-[var(--color-txt3)]">{hint}</span>
+        <span className="text-[9px] text-slate-500">{hint}</span>
       )}
     </label>
   )
@@ -44,17 +44,17 @@ function TextField({ label, value, onChange, hint }) {
 
 function CheckboxField({ label, value, onChange, hint }) {
   return (
-    <label className="flex items-start gap-2 cursor-pointer select-none">
+    <label className="flex items-start gap-2 cursor-pointer select-none group">
       <input
         type="checkbox"
         checked={value}
         onChange={(e) => onChange(e.target.checked)}
-        className="mt-0.5"
+        className="mt-0.5 accent-blue-500"
       />
       <span className="flex flex-col">
-        <span className="text-[10px] text-[var(--color-txt)] font-semibold">{label}</span>
+        <span className="text-[10.5px] text-slate-200 font-medium group-hover:text-slate-50 transition-colors">{label}</span>
         {hint && (
-          <span className="text-[9px] text-[var(--color-txt3)]">{hint}</span>
+          <span className="text-[9px] text-slate-500">{hint}</span>
         )}
       </span>
     </label>
@@ -78,10 +78,27 @@ export default function SweepConfig({
   const params = { ...DEFAULT_PARAMS, ...config.params }
 
   return (
-    <div className="rounded-xl border border-[var(--color-border)] bg-[#0d1225] p-4">
-      <div className="text-[10px] text-[var(--color-txt2)] uppercase tracking-widest font-semibold mb-3">
-        Sweep configuration
+    <div className="rounded-2xl ring-1 ring-slate-800/80 bg-slate-900/40 overflow-hidden">
+      {/* Section header */}
+      <div className="flex items-center justify-between gap-3 px-5 py-3 border-b border-slate-800/70">
+        <div className="flex items-center gap-2.5">
+          <span className="w-1.5 h-1.5 rounded-full bg-blue-400 shrink-0" />
+          <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-200">
+            Sweep configuration
+          </span>
+          <span className="text-slate-700 text-[10px]">/</span>
+          <span className="text-[9.5px] text-slate-500 uppercase tracking-[0.14em]">Step 1 of 4</span>
+        </div>
+        <button
+          onClick={() => setShowAdvanced((s) => !s)}
+          className="text-[10.5px] font-medium text-slate-400 hover:text-slate-200 cursor-pointer flex items-center gap-1.5 px-2 py-1 rounded-md hover:bg-slate-800/60 transition-colors"
+        >
+          <span className="text-slate-500">{showAdvanced ? '▾' : '▸'}</span>
+          {showAdvanced ? 'Hide' : 'Show'} operational rules
+        </button>
       </div>
+
+      <div className="p-5">
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <TextField
@@ -116,23 +133,17 @@ export default function SweepConfig({
         />
       </div>
 
-      <div className="mt-3 pt-3 border-t border-[var(--color-border)]/60 flex flex-wrap items-center gap-3">
+      <div className="mt-4 pt-4 border-t border-slate-800/70 flex flex-wrap items-center gap-3">
         <CheckboxField
           label="Enable battery + docking model"
           value={params.enableOperational}
           onChange={(v) => setParam('enableOperational', v)}
           hint="Step 3 — adds availability tracking"
         />
-        <button
-          onClick={() => setShowAdvanced((s) => !s)}
-          className="ml-auto text-[10px] text-[var(--color-txt2)] hover:text-[var(--color-accent)] underline cursor-pointer"
-        >
-          {showAdvanced ? 'Hide' : 'Show'} operational rules
-        </button>
       </div>
 
       {showAdvanced && (
-        <div className="mt-3 pt-3 border-t border-[var(--color-border)]/60 grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="mt-4 pt-4 border-t border-slate-800/70 grid grid-cols-2 lg:grid-cols-4 gap-3">
           <NumberField
             label="Sensing range (m)"
             value={params.sensingRange}
@@ -194,35 +205,36 @@ export default function SweepConfig({
         </div>
       )}
 
-      <div className="mt-4 pt-3 border-t border-[var(--color-border)]/60 flex items-center gap-3">
+      <div className="mt-5 pt-4 border-t border-slate-800/70 flex items-center gap-3">
         {!isRunning ? (
           <button
             onClick={onRun}
-            className="px-4 py-1.5 text-[11px] font-bold rounded-md bg-[var(--color-accent)] text-white hover:brightness-110 transition cursor-pointer"
+            className="px-5 py-2 text-[12px] font-semibold rounded-lg bg-blue-500 text-white hover:bg-blue-400 transition cursor-pointer ring-1 ring-blue-400/30 shadow-[0_4px_18px_-6px_rgba(59,130,246,0.5)]"
           >
             ▶ Run sweep
           </button>
         ) : (
           <button
             onClick={onCancel}
-            className="px-4 py-1.5 text-[11px] font-bold rounded-md bg-[var(--color-danger)] text-white hover:brightness-110 transition cursor-pointer"
+            className="px-5 py-2 text-[12px] font-semibold rounded-lg bg-rose-500 text-white hover:bg-rose-400 transition cursor-pointer ring-1 ring-rose-400/30"
           >
             ■ Stop
           </button>
         )}
         {progress && (
-          <div className="flex-1 flex items-center gap-2">
-            <div className="flex-1 h-1.5 rounded-full bg-[var(--color-border)] overflow-hidden">
+          <div className="flex-1 flex items-center gap-3">
+            <div className="flex-1 h-1.5 rounded-full bg-slate-800/80 overflow-hidden ring-1 ring-slate-800">
               <div
-                className="h-full bg-[var(--color-accent)] transition-all"
+                className="h-full bg-blue-400 transition-all"
                 style={{ width: `${(progress.done / Math.max(1, progress.total)) * 100}%` }}
               />
             </div>
-            <span className="text-[10px] text-[var(--color-txt2)] font-mono w-20 text-right">
+            <span className="text-[10.5px] text-slate-400 font-mono tabular-nums w-20 text-right">
               {progress.done}/{progress.total}
             </span>
           </div>
         )}
+      </div>
       </div>
     </div>
   )

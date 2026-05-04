@@ -2,17 +2,27 @@
  * Allocation Policies
  * ===================
  *
- * Two policies are compared per the supervisor's Step 2 / Step 4 requirements:
+ * Two policies compared in this thesis:
  *
  *   - Uniform:    each road gets ⌊N/R⌋ drones, with leftover drones assigned
  *                 to the longest roads (length is a sensible tie-breaker
  *                 because longer roads need more coverage capacity).
+ *                 [DESIGN choice; no external source claimed.]
  *
  *   - Risk-aware: drones are distributed proportional to each road's
- *                 composite risk score, using the Hamilton (largest
- *                 remainder) method to guarantee integer counts that sum
- *                 exactly to N. This is the same formula already used by
- *                 the partitioning page (src/partitioning/lib/roads.js).
+ *                 composite risk score, using the largest-remainder
+ *                 (Hamilton) apportionment method to guarantee integer
+ *                 counts that sum exactly to N.
+ *
+ *                 Hamilton's largest-remainder method dates to
+ *                 Hamilton 1792 (used for U.S. House apportionment until
+ *                 1900); the algorithm is described in
+ *                 Balinski & Young, "Fair Representation: Meeting the Ideal
+ *                 of One Man, One Vote" (Yale, 1982).
+ *
+ *                 The same risk score is computed in
+ *                 src/partitioning/lib/roads.js (custom multi-criteria
+ *                 heuristic — see that file for the citation note).
  *
  * Both policies return an array of { road, drones } in the same shape, so
  * the simulation engine treats them identically.

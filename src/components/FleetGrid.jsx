@@ -107,7 +107,7 @@ function ReserveCard({ rd }) {
   )
 }
 
-export default function FleetGrid({ drones, reserves, state }) {
+export default function FleetGrid({ drones, reserves, state, wide = false }) {
   const { SX, SY, PPM } = state
   const activeCount = drones.filter(d => d.state !== 'idle').length
   const avgBat = drones.length > 0
@@ -116,7 +116,7 @@ export default function FleetGrid({ drones, reserves, state }) {
   const avgBc = batColor(avgBat)
 
   return (
-    <div className="shrink-0 flex flex-col border-b border-[var(--color-border)]">
+    <div className={wide ? "flex flex-col flex-1 min-h-0" : "shrink-0 flex flex-col border-b border-[var(--color-border)]"}>
 
       {/* Section header */}
       <div className="flex items-center gap-2 px-3.5 py-2 bg-[var(--color-card)] border-b border-[var(--color-border)] shrink-0">
@@ -137,8 +137,11 @@ export default function FleetGrid({ drones, reserves, state }) {
       </div>
 
       {/* Cards */}
-      <div className="overflow-y-auto custom-scroll p-2.5" style={{ maxHeight: '215px' }}>
-        <div className="grid grid-cols-2 gap-1.5">
+      <div
+        className={wide ? "flex-1 min-h-0 overflow-y-auto custom-scroll p-3" : "overflow-y-auto custom-scroll p-2.5"}
+        style={wide ? {} : { maxHeight: '215px' }}
+      >
+        <div className={wide ? "grid grid-cols-3 gap-2.5" : "grid grid-cols-2 gap-1.5"}>
           {drones.map(d => {
             const dist = Math.hypot(d.x - SX, d.y - SY) / PPM
             return <DroneCard key={d.id} d={d} distM={dist.toFixed(0)} />

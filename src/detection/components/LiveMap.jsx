@@ -23,6 +23,17 @@ import { BEIRUT_CENTER, BEIRUT_ZOOM } from '../../partitioning/lib/roads'
  */
 
 const TIME_SCALE = 30 // 1 second of wall time = 30 simulated seconds
+// Visualisation-only multiplier on top of the user's accidentRateMultiplier
+// so that accidents arrive frequently enough to actually be watched on screen.
+// The Monte-Carlo sweep does NOT use this — it runs detection-sim.simulateOnce
+// directly with the user's config, unaffected by this constant.
+const DEMO_RATE_BOOST = 20
+// Detected accidents linger for this many sim-seconds (≈2.7 wall-seconds at
+// TIME_SCALE=30), fading over the last DETECTED_FADE_SIM, then are removed
+// from the map. Missed accidents are left in place so the operator can see
+// coverage gaps accumulate.
+const DETECTED_LINGER_SIM = 80
+const DETECTED_FADE_SIM = 30
 
 function makeRoadState(allocation, params, rng) {
   return allocation.map(({ road, drones: nDrones }) => {
@@ -49,7 +60,7 @@ function makeRoadState(allocation, params, rng) {
       road,
       path,
       droneStates,
-      baseRate: baselineRoadRate(road) * params.accidentRateMultiplier,
+      baseRate: baselineRoadRate(road) * params.accidentRateMultiplier * DEMO_RATE_BOOST,
     }
   })
 }
@@ -67,23 +78,37 @@ function droneIcon(color, state) {
 }
 
 function accidentIcon(status) {
-  const color =
-    status === 'detected' ? '#10b981'
-    : status === 'missed'  ? '#64748b'
-    : '#ef4444'
-  const pulse =
-    status === 'pending'
-      ? `<circle cx="11" cy="11" r="9" fill="none" stroke="${color}" stroke-width="1.2" opacity="0.55">
-           <animate attributeName="r" values="5;10;5" dur="1.4s" repeatCount="indefinite"/>
-           <animate attributeName="opacity" values="0.6;0.05;0.6" dur="1.4s" repeatCount="indefinite"/>
-         </circle>`
-      : ''
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 22 22">
-    ${pulse}
-    <circle cx="11" cy="11" r="6" fill="${color}" fill-opacity="0.55" stroke="${color}" stroke-width="1.5"/>
-    <circle cx="11" cy="11" r="2" fill="${color}"/>
+  if (status === 'pending') {
+    // Bright red warning triangle with strong pulsing ring — very visible.
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="34" height="34" viewBox="0 0 34 34">
+      <circle cx="17" cy="17" r="15" fill="none" stroke="#ef4444" stroke-width="2" opacity="0.7">
+        <animate attributeName="r" values="8;15;8" dur="1.1s" repeatCount="indefinite"/>
+        <animate attributeName="opacity" values="0.85;0;0.85" dur="1.1s" repeatCount="indefinite"/>
+      </circle>
+      <circle cx="17" cy="17" r="11" fill="#ef4444" fill-opacity="0.18" stroke="#ef4444" stroke-width="1"/>
+      <path d="M17 6 L28 24 L6 24 Z" fill="#ef4444" stroke="#0a0e1a" stroke-width="1.5" stroke-linejoin="round"/>
+      <text x="17" y="22" font-family="Arial,sans-serif" font-size="13" font-weight="900" fill="#fff" text-anchor="middle">!</text>
+    </svg>`
+    return L.divIcon({ html: svg, className: '', iconSize: [34, 34], iconAnchor: [17, 17] })
+  }
+  if (status === 'detected') {
+    // Green checkmark badge with a one-shot expanding "burst" ring on creation.
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="34" height="34" viewBox="0 0 34 34">
+      <circle cx="17" cy="17" r="11" fill="none" stroke="#10b981" stroke-width="2.5" opacity="1">
+        <animate attributeName="r" values="9;22;22" dur="0.9s" begin="0s" fill="freeze"/>
+        <animate attributeName="opacity" values="1;0;0" dur="0.9s" begin="0s" fill="freeze"/>
+      </circle>
+      <circle cx="17" cy="17" r="11" fill="#10b981" stroke="#0a0e1a" stroke-width="1.5"/>
+      <path d="M11 17 L15 21 L23 12" fill="none" stroke="#fff" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>`
+    return L.divIcon({ html: svg, className: '', iconSize: [34, 34], iconAnchor: [17, 17] })
+  }
+  // missed — clearly washed-out, dashed X
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 26 26">
+    <circle cx="13" cy="13" r="10" fill="#1e293b" stroke="#64748b" stroke-width="1.5" stroke-dasharray="3 3" opacity="0.85"/>
+    <path d="M9 9 L17 17 M17 9 L9 17" stroke="#94a3b8" stroke-width="2.2" stroke-linecap="round"/>
   </svg>`
-  return L.divIcon({ html: svg, className: '', iconSize: [22, 22], iconAnchor: [11, 11] })
+  return L.divIcon({ html: svg, className: '', iconSize: [26, 26], iconAnchor: [13, 13] })
 }
 
 function statusOf(acc) {
@@ -92,7 +117,7 @@ function statusOf(acc) {
   return 'pending'
 }
 
-export default function LiveMap({ N, policyKey }) {
+export default function LiveMap({ N, policyKey, params: paramsProp }) {
   const [, force] = useState(0)
   const [running, setRunning] = useState(false)
 
@@ -112,13 +137,18 @@ export default function LiveMap({ N, policyKey }) {
     const policy = POLICIES[policyKey] ?? POLICIES.riskAware
     const allocation = policy.allocate(N)
     const rng = makeRng(Date.now() & 0x7fffffff)
+    const params = { ...DEFAULT_PARAMS, ...(paramsProp ?? {}) }
     stateRef.current = {
       simT: 0,
-      params: { ...DEFAULT_PARAMS },
+      params,
       allocation,
-      roadStates: makeRoadState(allocation, DEFAULT_PARAMS, rng),
+      roadStates: makeRoadState(allocation, params, rng),
       accidents: [],
       rng,
+      // Cumulative counters — survive the accident-list cap.
+      totalGenerated: 0,
+      totalDetected: 0,
+      totalMissed: 0,
     }
     // Reset markers
     droneLayerRef.current.forEach(({ marker }) => marker.remove())
@@ -214,6 +244,7 @@ export default function LiveMap({ N, policyKey }) {
             </div>`
           )
         }
+
       }
     }
 
@@ -247,6 +278,17 @@ export default function LiveMap({ N, policyKey }) {
             : status === 'missed' ? 'Missed (timeout)' : 'Pending'
         )
         entry.prevStatus = status
+      }
+
+      // Fade detected markers over the last DETECTED_FADE_SIM seconds of
+      // their linger window so removal isn't abrupt.
+      if (status === 'detected' && acc.detectedAt != null) {
+        const age = st.simT - acc.detectedAt
+        const fadeStart = DETECTED_LINGER_SIM - DETECTED_FADE_SIM
+        const opacity = age <= fadeStart
+          ? 1
+          : Math.max(0, 1 - (age - fadeStart) / DETECTED_FADE_SIM)
+        entry.marker.setOpacity(opacity)
       }
     }
     // Drop accident markers that no longer exist (we cap the list above)
@@ -309,10 +351,12 @@ export default function LiveMap({ N, policyKey }) {
             detected: false,
             missed: false,
           })
+          st.totalGenerated++
         }
       }
 
-      // Detection check
+      // Detection check — increment cumulative counters on the transition
+      // (so totals survive the accident-list cap below).
       for (const acc of st.accidents) {
         if (acc.detected || acc.missed) continue
         const rs = st.roadStates[acc.roadIdx]
@@ -324,15 +368,26 @@ export default function LiveMap({ N, policyKey }) {
           if (dist <= st.params.sensingRange) {
             acc.detected = true
             acc.detectionTime = st.simT - acc.time
+            acc.detectedAt = st.simT
+            st.totalDetected++
             break
           }
         }
         if (!acc.detected && st.simT - acc.time > st.params.maxDetectionWindow) {
           acc.missed = true
+          st.totalMissed++
         }
       }
 
-      // Cap accident list
+      // Drop detected accidents that have lingered past their fade window —
+      // keeps the map clear. Missed accidents stay so coverage gaps remain
+      // visible.
+      st.accidents = st.accidents.filter(
+        (a) => !(a.detected && st.simT - a.detectedAt > DETECTED_LINGER_SIM)
+      )
+
+      // Cap accident list. Cumulative totals (totalDetected/totalMissed)
+      // are tracked separately above so they don't drift when this fires.
       if (st.accidents.length > 80) {
         st.accidents = st.accidents.slice(-80)
       }
@@ -356,48 +411,110 @@ export default function LiveMap({ N, policyKey }) {
   }, [running])
 
   const st = stateRef.current
-  const detected = st?.accidents.filter((a) => a.detected).length ?? 0
-  const missed = st?.accidents.filter((a) => a.missed).length ?? 0
-  const pending = st ? st.accidents.length - detected - missed : 0
+  const pending = st?.accidents.filter((a) => !a.detected && !a.missed).length ?? 0
+  const totalDetected = st?.totalDetected ?? 0
+  const totalMissed = st?.totalMissed ?? 0
+  const totalGenerated = st?.totalGenerated ?? 0
+  const resolved = totalDetected + totalMissed
+  const detectionRate = resolved > 0 ? (totalDetected / resolved) * 100 : null
+
+  const policyMeta = POLICIES[policyKey]
+  const policyColor = policyMeta?.color ?? '#94a3b8'
+
+  // Refined, calmer palette for the KPI cards. Each entry uses a soft
+  // background tint and a slate-leaning value colour rather than full
+  // saturation, so the strip reads as a unified chart instead of six
+  // competing neon badges.
+  const kpis = [
+    { label: 'Sim time', value: `${Math.floor(st?.simT ?? 0)}s`, hint: `×${TIME_SCALE} real-time`, dot: '#94a3b8', tint: 'rgba(148, 163, 184, 0.10)' },
+    { label: 'Total',    value: totalGenerated,                  hint: 'accidents generated',     dot: '#cbd5e1', tint: 'rgba(203, 213, 225, 0.08)' },
+    { label: 'Active',   value: pending,                         hint: 'awaiting detection',      dot: '#f59e0b', tint: 'rgba(245, 158, 11, 0.10)' },
+    { label: 'Detected', value: totalDetected,                   hint: 'within window',           dot: '#34d399', tint: 'rgba(52, 211, 153, 0.10)' },
+    { label: 'Missed',   value: totalMissed,                     hint: 'timeout exceeded',        dot: '#f87171', tint: 'rgba(248, 113, 113, 0.10)' },
+    { label: 'Rate',     value: detectionRate !== null ? `${detectionRate.toFixed(0)}%` : '—', hint: 'detected / resolved', dot: '#60a5fa', tint: 'rgba(96, 165, 250, 0.10)' },
+  ]
 
   return (
-    <div className="rounded-xl border border-[var(--color-border)] bg-[#0d1225] overflow-hidden">
-      <div className="px-4 py-2 border-b border-[var(--color-border)] flex items-center gap-3">
-        <div className="text-[10px] text-[var(--color-txt2)] uppercase tracking-widest font-semibold">
-          Live trial · {POLICIES[policyKey]?.label ?? policyKey} · N = {N}
+    <div className="rounded-2xl border border-slate-800/80 bg-slate-950/40 backdrop-blur-sm overflow-hidden shadow-[0_1px_0_rgba(255,255,255,0.03)_inset]">
+
+      {/* Title strip + actions */}
+      <div className="px-5 py-3 border-b border-slate-800/70 flex items-center gap-3 flex-wrap">
+        <div className="flex items-center gap-2.5">
+          <span className="w-1.5 h-1.5 rounded-full" style={{ background: policyColor }} />
+          <span className="text-[12px] font-semibold text-slate-100 tracking-tight">Live trial</span>
+          <span className="text-slate-600 text-[10px]">/</span>
+          <span className="text-[10.5px] font-medium" style={{ color: policyColor }}>
+            {policyMeta?.label ?? policyKey}
+          </span>
+          <span className="text-slate-600 text-[10px]">/</span>
+          <span className="text-[10.5px] font-mono text-slate-400">N = {N}</span>
         </div>
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex items-center gap-1.5">
           <button
             onClick={() => setRunning((r) => !r)}
-            className="px-3 py-1 text-[10px] font-bold rounded-md border border-[var(--color-border2)] text-[var(--color-txt)] hover:bg-[#111827] cursor-pointer"
+            className={`px-3.5 py-1.5 text-[10.5px] font-semibold rounded-md transition-colors cursor-pointer
+              ${running
+                ? 'bg-amber-500/15 text-amber-300 hover:bg-amber-500/25 ring-1 ring-amber-500/30'
+                : 'bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25 ring-1 ring-emerald-500/30'}`}
           >
             {running ? '❚❚ Pause' : '▶ Play'}
           </button>
           <button
             onClick={() => { setRunning(false); init(); force((x) => x + 1) }}
-            className="px-3 py-1 text-[10px] font-bold rounded-md border border-[var(--color-border2)] text-[var(--color-txt2)] hover:bg-[#111827] cursor-pointer"
+            className="px-3.5 py-1.5 text-[10.5px] font-semibold rounded-md text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 ring-1 ring-slate-700/50 cursor-pointer"
           >
             ↻ Reset
           </button>
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-2 px-4 py-2 border-b border-[var(--color-border)] text-[10px] font-mono">
-        <div>
-          <span className="text-[var(--color-txt3)]">t = </span>
-          <span className="text-[var(--color-cyan)] font-bold">{Math.floor(st?.simT ?? 0)}s</span>
-        </div>
-        <div>
-          <span className="text-[var(--color-txt3)]">detected </span>
-          <span className="text-[var(--color-mint)] font-bold">{detected}</span>
-          <span className="text-[var(--color-txt3)]"> · pending </span>
-          <span className="text-[var(--color-warn)] font-bold">{pending}</span>
-          <span className="text-[var(--color-txt3)]"> · missed </span>
-          <span className="text-[var(--color-danger)] font-bold">{missed}</span>
-        </div>
-        <div className="text-right">
-          <span className="text-[var(--color-txt3)]">×{TIME_SCALE} time</span>
-        </div>
+      {/* KPI cards */}
+      <div className="grid grid-cols-3 md:grid-cols-6 gap-2 px-5 py-3 border-b border-slate-800/70">
+        {kpis.map((k) => (
+          <div
+            key={k.label}
+            className="rounded-lg ring-1 ring-slate-800/70 px-3 py-2 transition-colors hover:ring-slate-700"
+            style={{ background: k.tint }}
+          >
+            <div className="flex items-center gap-1.5 text-[8.5px] uppercase tracking-[0.14em] font-semibold text-slate-400">
+              <span className="w-1 h-1 rounded-full" style={{ background: k.dot }} />
+              {k.label}
+            </div>
+            <div className="font-mono font-semibold text-[17px] leading-snug tabular-nums text-slate-100 mt-0.5">
+              {k.value}
+            </div>
+            <div className="text-[8.5px] text-slate-500 leading-none">{k.hint}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Legend */}
+      <div className="flex items-center gap-5 px-5 py-2 border-b border-slate-800/70 text-[10.5px] flex-wrap">
+        <span className="text-[8.5px] text-slate-500 uppercase tracking-[0.16em] font-semibold">Legend</span>
+        <span className="flex items-center gap-1.5 text-slate-300">
+          <svg width="16" height="16" viewBox="0 0 34 34">
+            <path d="M17 6 L28 24 L6 24 Z" fill="#ef4444" stroke="#0a0e1a" strokeWidth="1.5" strokeLinejoin="round"/>
+            <text x="17" y="22" fontFamily="Arial" fontSize="13" fontWeight="900" fill="#fff" textAnchor="middle">!</text>
+          </svg>
+          Active <span className="text-slate-500">— pulsing</span>
+        </span>
+        <span className="flex items-center gap-1.5 text-slate-300">
+          <svg width="16" height="16" viewBox="0 0 34 34">
+            <circle cx="17" cy="17" r="11" fill="#10b981" stroke="#0a0e1a" strokeWidth="1.5"/>
+            <path d="M11 17 L15 21 L23 12" fill="none" stroke="#fff" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+          Detected <span className="text-slate-500">— burst, then fades</span>
+        </span>
+        <span className="flex items-center gap-1.5 text-slate-300">
+          <svg width="16" height="16" viewBox="0 0 26 26">
+            <circle cx="13" cy="13" r="10" fill="#1e293b" stroke="#64748b" strokeWidth="1.5" strokeDasharray="3 3" opacity="0.85"/>
+            <path d="M9 9 L17 17 M17 9 L9 17" stroke="#94a3b8" strokeWidth="2.2" strokeLinecap="round"/>
+          </svg>
+          Missed <span className="text-slate-500">— timeout {DEFAULT_PARAMS.maxDetectionWindow}s</span>
+        </span>
+        <span className="ml-auto text-[9px] text-slate-500 italic">
+          Drone colour matches its assigned road
+        </span>
       </div>
 
       <div ref={mapElRef} style={{ height: 460 }} className="w-full" />

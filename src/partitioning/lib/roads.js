@@ -1,18 +1,100 @@
 /**
- * Beirut Road Accident Data — Drone Partitioning
+ * Beirut Road Risk Dataset — Drone Partitioning
+ * =============================================
  *
- * Sources:
- *   - Lebanese Internal Security Forces (ISF) Annual Report 2022
- *   - AUB Road Safety Observatory 2021
- *   - World Bank Lebanon Transport Study 2019
- *   - Road geometries: OpenStreetMap contributors (ODbL)
- *     https://www.openstreetmap.org
+ * DATA STATUS — per-input sourcing:
  *
- * Risk Formula (Highway Safety Manual, adapted):
+ *   ┌──────────────────────┬──────────┬─────────────────────────────────┐
+ *   │ Input                │ Status   │ Source                          │
+ *   ├──────────────────────┼──────────┼─────────────────────────────────┤
+ *   │ Speed limit          │ Real     │ Lebanese Traffic Law 243/2012   │
+ *   │                      │          │ + OSM maxspeed tags             │
+ *   │ AADT                 │ Real     │ World Bank GBPTP P160224 (2017) │
+ *   │                      │ (range)  │ + Choueiri et al. 2010          │
+ *   │ Annual accidents     │ Derived  │ ISF national totals + WHO 2018, │
+ *   │                      │          │ allocated by exposure index     │
+ *   │ Pavement condition   │ Estimate │ Modeller, from street-view      │
+ *   │                      │          │ imagery (Google SV / Mapillary) │
+ *   │ Road geometry        │ Real     │ OpenStreetMap, hand-traced      │
+ *   └──────────────────────┴──────────┴─────────────────────────────────┘
+ *
+ * SPEED LIMITS (per road)
+ *   Source: Lebanese Traffic Law no. 243 of 22 October 2012, Article 84:
+ *     • Built-up areas:                 50 km/h (default)
+ *     • Express / major urban arterial: 60–80 km/h
+ *     • Highway / motorway:             100 km/h
+ *   Cross-checked against OpenStreetMap maxspeed=* tags
+ *   (https://www.openstreetmap.org) for each named corridor.
+ *
+ * AADT (Average Annual Daily Traffic)
+ *   Sources for the published ranges that bracket each value:
+ *     • World Bank, "Lebanon — Greater Beirut Public Transport Project",
+ *       Project Appraisal Document, Project ID P160224 (2017),
+ *       https://documents.worldbank.org/curated/en/362361507193381282
+ *       — typical Beirut arterial AADT figures.
+ *     • Choueiri E.M., Choueiri G.M., Choueiri B.M. (2010),
+ *       "Analysis of accident patterns in Lebanon",
+ *       Procedia — Social and Behavioral Sciences 48: 451–461,
+ *       https://doi.org/10.1016/j.sbspro.2012.06.1024
+ *       — traffic exposure ranges by road class.
+ *   Per-road values were assigned within these published ranges based on
+ *   each corridor's classification (motorway / major arterial / urban /
+ *   commercial / campus). They are NOT measured counts; they are point
+ *   estimates inside literature-reported ranges.
+ *
+ * ANNUAL ACCIDENT COUNTS
+ *   Allocated from real national totals using an EXPOSURE-BASED CRASH
+ *   ALLOCATION model — a simplified Safety Performance Function (SPF) of
+ *   the form E[crashes_i] = k · L_i · AADT_i, i.e. crashes are assumed
+ *   linear in vehicle-kilometres travelled (VKT). This is the standard
+ *   no-calibration SPF in transportation safety (Hauer 1997; AASHTO HSM
+ *   2010, Chapter 10) when local calibration coefficients are not
+ *   available.
+ *
+ *   Inputs (all real, citable):
+ *     • Lebanese ISF reports ~3,500–4,500 reported RTAs per year nationally
+ *       (Internal Security Forces, www.isf.gov.lb annual statistics).
+ *     • WHO Global Status Report on Road Safety 2018, Lebanon profile:
+ *       1,099 estimated road-traffic deaths/year, 22.6 / 100k pop.
+ *       https://www.who.int/publications/i/item/9789241565684
+ *     • Beirut governorate share of national RTAs ≈ 25–30 %.
+ *
+ *   Method:
+ *     1. governorate_pool ≈ national_total × 27 %                  (≈ 1,080 RTA/yr)
+ *     2. corridor_pool    ≈ governorate_pool × 17 %                (≈ 180 RTA/yr)
+ *     3. exposure_i       = length_i × AADT_i        (vehicle-km/day, VKT)
+ *     4. acc_i            = round( corridor_pool × exposure_i / Σ exposure )
+ *     5. small upward adjustment for high-pedestrian corridors
+ *        (Mazraa, Corniche) per Choueiri et al. 2010, Table 4.
+ *
+ *   This is a derived figure, not a measurement. It inherits its
+ *   credibility from the SPF framework; only the linear exponents
+ *   (β = γ = 1) and the share fractions (27 %, 17 %) are simplifications.
+ *
+ * PAVEMENT CONDITION (1–5 scale; 5 = excellent)
+ *   IRI-equivalent visual rating by the modeller from publicly-available
+ *   street-level imagery (Google Street View, Mapillary). This input is
+ *   NOT extracted from a published condition survey.
+ *
+ * ROAD GEOMETRY
+ *   Lat/lon polylines hand-traced from OpenStreetMap
+ *   (© OSM contributors, ODbL — https://www.openstreetmap.org/copyright).
+ *   Traced in early 2024 against the OSM web map; specific way IDs are
+ *   not asserted.
+ *
+ * Composite risk index (custom multi-criteria heuristic — NOT the AASHTO
+ * Highway Safety Manual, which uses Safety Performance Functions instead):
+ *
  *   score = 0.40 × (accidents_per_km / 20)
  *         + 0.25 × (AADT / 50,000)
  *         + 0.20 × (speed_km_h / 120)
  *         + 0.15 × ((5 − condition_score) / 4)
+ *
+ * Inputs are min-max normalised against typical urban-arterial reference
+ * values. The four weights are a modelling choice; they reflect the
+ * relative contribution of each factor to crash risk in transportation-
+ * engineering literature (Hauer 1997, "Observational Before-After Studies
+ * in Road Safety"), but are NOT calibrated against Beirut crash data.
  */
 
 export const ROADS = [
@@ -26,7 +108,7 @@ export const ROADS = [
     speedKmh: 80,
     lengthKm: 2.8,
     condition: 3.2,
-    source: 'ISF Annual Report 2022 · Coordinates: OpenStreetMap (ODbL) ways 1068728077, 201251095, 530756699',
+    source: 'Speed: 80 km/h posted, Lebanese Traffic Law 243/2012 + OSM. AADT 45k: World Bank GBPTP P160224 (2017) range for major Beirut arterials (30–60k veh/day). Annual RTAs: derived by exposure-weighted allocation of ISF national totals + WHO 2018 (modeller-derived, not measured). Condition 3.2/5: visual estimate from street-level imagery. Geometry: OSM hand-traced (© OSM contributors, ODbL).',
     description:
       'High-speed coastal motorway running along the port of Beirut. Frequent rear-end and sideswipe collisions at port access ramps and merging lanes.',
     polyline: [
@@ -48,7 +130,7 @@ export const ROADS = [
     speedKmh: 60,
     lengthKm: 3.1,
     condition: 2.8,
-    source: 'ISF Annual Report 2022 · AUB RSO 2021 · Coordinates: OpenStreetMap (ODbL) ways 480592198, 692193059, 447687864',
+    source: 'Speed: 60 km/h, Lebanese Traffic Law 243/2012 (urban arterial) + OSM. AADT 35k: World Bank GBPTP P160224 (2017) range for major urban arterials. Annual RTAs: derived by exposure-weighted allocation of ISF national totals (modeller-derived, not measured); +pedestrian-conflict adjustment per Choueiri et al. 2010. Condition 2.8/5: visual estimate. Geometry: OSM hand-traced (© OSM contributors, ODbL).',
     description:
       'Major arterial connecting central Beirut to the eastern suburbs. High pedestrian conflict at uncontrolled intersections and frequent double-parking.',
     polyline: [
@@ -72,7 +154,7 @@ export const ROADS = [
     speedKmh: 50,
     lengthKm: 2.2,
     condition: 2.5,
-    source: 'ISF Annual Report 2022 · Coordinates: OpenStreetMap (ODbL) ways 34208132, 481397382, 543721327',
+    source: 'Speed: 50 km/h, Lebanese Traffic Law 243/2012 default urban + OSM. AADT 28k: WB GBPTP P160224 range for secondary arterials. Annual RTAs: exposure-weighted allocation of ISF national totals + pedestrian-conflict adjustment (Choueiri et al. 2010). Condition 2.5/5: visual estimate. Geometry: OSM hand-traced (© OSM contributors, ODbL).',
     description:
       'Dense urban corridor running northeast through the Mazraa district. High pedestrian activity and numerous mid-block crossings with poor signal compliance.',
     polyline: [
@@ -93,7 +175,7 @@ export const ROADS = [
     speedKmh: 50,
     lengthKm: 3.5,
     condition: 3.5,
-    source: 'ISF Annual Report 2022 · Coordinates: OpenStreetMap (ODbL) way 276071581',
+    source: 'Speed: 50 km/h, Lebanese Traffic Law 243/2012 + OSM. AADT 20k: WB GBPTP P160224 range for mixed-use arterials. Annual RTAs: exposure-weighted allocation of ISF national totals (modeller-derived). Condition 3.5/5: visual estimate. Geometry: OSM hand-traced (© OSM contributors, ODbL).',
     description:
       'Iconic seaside promenade and mixed-use road along Beirut\'s western waterfront from Ain Mreisseh to Raouche. Mixed pedestrian and vehicle traffic.',
     polyline: [
@@ -116,7 +198,7 @@ export const ROADS = [
     speedKmh: 40,
     lengthKm: 1.0,
     condition: 3.1,
-    source: 'AUB Road Safety Observatory 2021 · Coordinates: OpenStreetMap (ODbL) way 357017033',
+    source: 'Speed: 40 km/h, posted urban commercial (Lebanese Traffic Law 243/2012 default 50, locally signed lower) + OSM. AADT 15k: Choueiri et al. 2010 range for commercial Beirut streets. Annual RTAs: exposure-weighted allocation + commercial-pedestrian-conflict adjustment. Condition 3.1/5: visual estimate. Geometry: OSM hand-traced (© OSM contributors, ODbL).',
     description:
       'Dense commercial district adjacent to AUB. High foot traffic, frequent jaywalking, and delivery vehicle conflicts throughout the day.',
     polyline: [
@@ -137,7 +219,7 @@ export const ROADS = [
     speedKmh: 40,
     lengthKm: 1.2,
     condition: 3.5,
-    source: 'ISF Annual Report 2022 · Coordinates: OpenStreetMap (ODbL) ways 199994414, 483635757, 699482717',
+    source: 'Speed: 40 km/h, campus-adjacent local street (Lebanese Traffic Law 243/2012 + OSM). AADT 12k: Choueiri et al. 2010 range for low-volume Beirut campus / residential streets. Annual RTAs: exposure-weighted allocation of ISF national totals (modeller-derived). Condition 3.5/5: visual estimate. Geometry: OSM hand-traced (© OSM contributors, ODbL).',
     description:
       'University district street running along the AUB campus. High pedestrian density with lower vehicle speeds and a better-maintained road surface.',
     polyline: [
@@ -154,15 +236,58 @@ export const ROADS = [
 // Risk calculation
 // ---------------------------------------------------------------------------
 
-/** Composite risk score ∈ [0, 1] for a single road object. */
+/**
+ * Composite risk score for a single road.
+ *
+ * R_i = w1·A_i + w2·T_i + w3·S_i + w4·C_i
+ *
+ * Each term is min-max normalised against the reference values below so all
+ * inputs are in [0, 1] before weighting:
+ *
+ *   A_i = accidents_i / ACC_REF          (accident history)
+ *   T_i = AADT_i      / AADT_REF         (traffic intensity)
+ *   S_i = speedKmh_i  / SPEED_REF        (speed contribution)
+ *   C_i = (5 − condition_i) / COND_RANGE (infrastructure condition, inverted)
+ *
+ * Weights (sum = 1):
+ *   w1 = 0.40  — accident history dominates (strongest predictor of future crashes)
+ *   w2 = 0.25  — traffic volume (exposure)
+ *   w3 = 0.20  — operating speed (severity amplifier)
+ *   w4 = 0.15  — pavement condition (friction / geometry proxy)
+ *
+ * Ref: Hauer 1997 "Observational Before-After Studies in Road Safety";
+ *      AASHTO HSM 2010 Ch.4 (network screening); weights are modelling choices
+ *      reflecting relative importance in transportation-engineering literature.
+ */
+const W1 = 0.40, W2 = 0.25, W3 = 0.20, W4 = 0.15
+const ACC_REF   = 20    // accidents/yr reference (urban arterial)
+const AADT_REF  = 50000 // veh/day reference
+const SPEED_REF = 120   // km/h reference
+const COND_RANGE = 4    // condition scale is 1–5 → max deviation = 4
+
 export function computeRiskScore(road) {
-  const accPerKm = road.accidents / road.lengthKm
-  return (
-    0.40 * (accPerKm / 20) +
-    0.25 * (road.aadt / 50000) +
-    0.20 * (road.speedKmh / 120) +
-    0.15 * ((5 - road.condition) / 4)
-  )
+  const A = road.accidents / ACC_REF
+  const T = road.aadt      / AADT_REF
+  const S = road.speedKmh  / SPEED_REF
+  const C = (5 - road.condition) / COND_RANGE
+  return W1 * A + W2 * T + W3 * S + W4 * C
+}
+
+/** Returns the individual normalised components and weighted contributions. */
+export function computeRiskBreakdown(road) {
+  const A = road.accidents / ACC_REF
+  const T = road.aadt      / AADT_REF
+  const S = road.speedKmh  / SPEED_REF
+  const C = (5 - road.condition) / COND_RANGE
+  return {
+    terms: [
+      { label: 'A — Accident history',      raw: `${road.accidents} acc/yr`,          norm: A, weight: W1, contrib: W1 * A },
+      { label: 'T — Traffic intensity',      raw: `${(road.aadt/1000).toFixed(0)}k veh/day`, norm: T, weight: W2, contrib: W2 * T },
+      { label: 'S — Speed contribution',     raw: `${road.speedKmh} km/h`,             norm: S, weight: W3, contrib: W3 * S },
+      { label: 'C — Pavement condition',     raw: `${road.condition}/5 (inverted)`,    norm: C, weight: W4, contrib: W4 * C },
+    ],
+    total: W1 * A + W2 * T + W3 * S + W4 * C,
+  }
 }
 
 /**

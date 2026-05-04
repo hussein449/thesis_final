@@ -1,0 +1,181 @@
+import { useMemo } from 'react'
+import {
+  LineChart, Line, BarChart, Bar,
+  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ReferenceLine,
+  ResponsiveContainer,
+} from 'recharts'
+import { simulateWithDispatch, DEFAULT_PARAMS } from '../lib/detection-sim'
+import { POLICIES } from '../lib/policies'
+
+// ── Dispatch strategy definitions ────────────────────────────────────────────
+const DISPATCH_STRATEGIES = [
+  {
+    key: 'nearest',
+    label: 'Nearest drone',
+    color: '#22d3ee',
+    description: 'Dispatch the patrolling drone closest to the accident location.',
+  },
+  {
+    key: 'batteryFirst',
+    label: 'Battery-aware',
+    color: '#f97316',
+    description: 'Dispatch the drone with the highest remaining battery — maximises range margin.',
+  },
+  {
+    key: 'balanced',
+    label: 'Balanced load',
+    color: '#a78bfa',
+    description: 'Dispatch the drone with the fewest prior dispatches — distributes wear evenly.',
+  },
+]
+
+const FLEET_SIZES = [3, 5, 7, 10, 15, 20]
+const TRIALS = 10
+const grid = '#1e293b'
+const textColor = '#64748b'
+
+function computeDispatchSweep() {
+  const params = { ...DEFAULT_PARAMS, totalTime: 1800 }
+  // Use risk-aware allocation (standard)
+  const data = FLEET_SIZES.map((N) => {
+    const allocation = POLICIES.riskAware.allocate(N)
+    const row = { N }
+    for (const ds of DISPATCH_STRATEGIES) {
+      let totalDt = 0, count = 0, missed = 0, total = 0
+      for (let t = 0; t < TRIALS; t++) {
+        const r = simulateWithDispatch({ allocation, params, seed: 42 + t * 31, dispatchRule: ds.key })
+        r.detectionTimes.forEach((dt) => { totalDt += dt; count++ })
+        missed += r.nMissed
+        total += r.nTotal
+      }
+      row[`${ds.key}_avg`] = count > 0 ? Math.round(totalDt / count) : null
+      row[`${ds.key}_missedPct`] = total > 0 ? +((missed / total) * 100).toFixed(1) : 0
+    }
+    return row
+  })
+  return data
+}
+
+function CustomTooltip({ active, payload, label, xLabel = 'N', xUnit = ' drones' }) {
+  if (!active || !payload?.length) return null
+  return (
+    <div className="bg-[#111827] border border-[var(--color-border)] rounded-lg px-3 py-2 shadow-xl">
+      <div className="text-[10px] text-[var(--color-txt2)] mb-1">{xLabel} = {label}{xUnit}</div>
+      {payload.map((p, i) => (
+        <div key={i} className="flex items-center gap-2 text-[11px]">
+          <span className="w-2 h-2 rounded-full" style={{ background: p.color }} />
+          <span className="text-[var(--color-txt2)]">{p.name}:</span>
+          <span className="font-bold font-mono" style={{ color: p.color }}>
+            {p.value != null ? p.value : '—'}
+          </span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+export default function DispatchComparison() {
+  const data = useMemo(() => computeDispatchSweep(), [])
+
+  return (
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="rounded-xl border border-[var(--color-border)] bg-[#0d1225] px-5 py-4">
+        <div className="text-[10px] text-[var(--color-txt2)] uppercase tracking-widest font-semibold mb-1">
+          Dispatch strategy comparison — active-response model
+        </div>
+        <div className="text-[11px] text-[var(--color-txt3)] leading-relaxed max-w-3xl">
+          When an accident occurs, a drone on the same road is actively selected and diverted.
+          Detection time equals travel time at patrol speed ({DEFAULT_PARAMS.droneSpeed} m/s).
+          Allocation: Risk-aware (Hamilton method). {TRIALS} trials per fleet size, 30 min sim time.
+        </div>
+        {/* Strategy cards */}
+        <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {DISPATCH_STRATEGIES.map((ds) => (
+            <div
+              key={ds.key}
+              className="rounded-lg border px-3 py-2.5"
+              style={{ borderColor: ds.color + '40', background: ds.color + '0d' }}
+            >
+              <div className="text-[10px] font-bold mb-0.5" style={{ color: ds.color }}>
+                {ds.label}
+              </div>
+              <div className="text-[9.5px] text-[var(--color-txt3)] leading-relaxed">
+                {ds.description}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Mean detection time vs N */}
+        <div className="rounded-xl border border-[var(--color-border)] bg-[#0d1225] p-4">
+          <div className="text-[10px] text-[var(--color-txt2)] uppercase tracking-widest font-semibold mb-1">
+            Mean detection time vs fleet size
+          </div>
+          <div className="text-[9.5px] text-[var(--color-txt3)] mb-3">
+            Lower is better. Averaged over detected accidents only.
+          </div>
+          <ResponsiveContainer width="100%" height={240}>
+            <LineChart data={data} margin={{ top: 8, right: 20, left: 0, bottom: 20 }}>
+              <CartesianGrid stroke={grid} strokeDasharray="3 3" />
+              <XAxis dataKey="N" stroke={textColor} tick={{ fontSize: 10 }}
+                label={{ value: 'Fleet size N', position: 'insideBottom', offset: -10, fill: textColor, fontSize: 10 }} />
+              <YAxis stroke={textColor} tick={{ fontSize: 10 }} tickFormatter={(v) => `${v}s`}
+                label={{ value: 'Mean detect. time (s)', angle: -90, position: 'insideLeft', fill: textColor, fontSize: 10 }} />
+              <Tooltip content={<CustomTooltip xUnit=" drones" />} />
+              <Legend wrapperStyle={{ fontSize: 10, color: textColor, paddingTop: 4 }} />
+              <ReferenceLine y={120} stroke="#fbbf24" strokeDasharray="4 3" strokeWidth={1}
+                label={{ value: '2 min', position: 'insideTopRight', fill: '#fbbf24', fontSize: 9 }} />
+              {DISPATCH_STRATEGIES.map((ds) => (
+                <Line key={ds.key} type="monotone" dataKey={`${ds.key}_avg`}
+                  name={ds.label} stroke={ds.color} strokeWidth={2}
+                  dot={{ r: 3, fill: ds.color }} connectNulls />
+              ))}
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+
+        {/* Missed % vs N */}
+        <div className="rounded-xl border border-[var(--color-border)] bg-[#0d1225] p-4">
+          <div className="text-[10px] text-[var(--color-txt2)] uppercase tracking-widest font-semibold mb-1">
+            Missed accidents (%) vs fleet size
+          </div>
+          <div className="text-[9.5px] text-[var(--color-txt3)] mb-3">
+            Accidents with no patrolling drone available at time of occurrence.
+          </div>
+          <ResponsiveContainer width="100%" height={240}>
+            <BarChart data={data} margin={{ top: 8, right: 20, left: 0, bottom: 20 }}>
+              <CartesianGrid stroke={grid} strokeDasharray="3 3" />
+              <XAxis dataKey="N" stroke={textColor} tick={{ fontSize: 10 }}
+                label={{ value: 'Fleet size N', position: 'insideBottom', offset: -10, fill: textColor, fontSize: 10 }} />
+              <YAxis stroke={textColor} tick={{ fontSize: 10 }} tickFormatter={(v) => `${v}%`}
+                label={{ value: '% missed', angle: -90, position: 'insideLeft', fill: textColor, fontSize: 10 }} />
+              <Tooltip content={<CustomTooltip xUnit=" drones" />} />
+              <Legend wrapperStyle={{ fontSize: 10, color: textColor, paddingTop: 4 }} />
+              {DISPATCH_STRATEGIES.map((ds) => (
+                <Bar key={ds.key} dataKey={`${ds.key}_missedPct`}
+                  name={ds.label} fill={ds.color} opacity={0.8} />
+              ))}
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+
+      {/* Interpretation */}
+      <div className="rounded-xl border border-[var(--color-border)] bg-[#0d1225] px-5 py-3">
+        <div className="text-[9.5px] text-[var(--color-txt3)] leading-relaxed">
+          <span className="text-[var(--color-txt2)] font-semibold">Key insight: </span>
+          In the active-dispatch model, <span className="text-[#22d3ee]">Nearest</span> minimises
+          travel time but may repeatedly task the same drone, draining its battery.{' '}
+          <span className="text-[#a78bfa]">Balanced load</span> distributes dispatches evenly,
+          keeping more drones mission-ready.{' '}
+          <span className="text-[#f97316]">Battery-aware</span> avoids dispatching a nearly-depleted
+          drone, reducing mid-response docking events. Missed-accident rate depends primarily on
+          fleet coverage — all strategies converge as N grows and coverage gaps close.
+        </div>
+      </div>
+    </div>
+  )
+}

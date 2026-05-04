@@ -5,6 +5,10 @@ import AvailabilityPlots from './components/AvailabilityPlots'
 import AllocationTable from './components/AllocationTable'
 import SummaryCard from './components/SummaryCard'
 import LiveMap from './components/LiveMap'
+import SensitivityPlots from './components/SensitivityPlots'
+import DetectionCDFPlots from './components/DetectionCDFPlots'
+import SimExport from './components/SimExport'
+import DispatchComparison from './components/DispatchComparison'
 import { runSweep } from './lib/monteCarlo'
 import { POLICIES } from './lib/policies'
 
@@ -12,8 +16,8 @@ const DEFAULT_CONFIG = {
   droneCountsText: '3, 5, 7, 10, 15, 20',
   trialsPerPoint: 20,
   params: {
-    totalTime: 1800,             // 30 minutes per trial by default
-    accidentRateMultiplier: 60,  // dense enough to give meaningful counts
+    totalTime: 1800,
+    accidentRateMultiplier: 60,
     enableOperational: true,
   },
 }
@@ -26,6 +30,117 @@ function parseCounts(text) {
     .sort((a, b) => a - b)
 }
 
+// ── Sidebar nav structure ─────────────────────────────────────────────────────
+const NAV_GROUPS = [
+  {
+    label: 'Setup',
+    items: [
+      { key: 'configure', label: 'Configure', icon: '⚙', desc: 'Fleet, time, multiplier' },
+    ],
+  },
+  {
+    label: 'Results',
+    items: [
+      { key: 'detection',   label: 'Detection performance', icon: '◇', desc: 'Mean time · P(det)' },
+      { key: 'cdf',         label: 'P(Tₐ < τ) curves',     icon: '∿', desc: 'Empirical CDF' },
+      { key: 'operational', label: 'Operational metrics',   icon: '◈', desc: 'Battery · availability' },
+      { key: 'sensitivity', label: 'Sensitivity analysis',  icon: '⊕', desc: 'Parameter sweeps' },
+    ],
+  },
+  {
+    label: 'Comparison',
+    items: [
+      { key: 'allocation', label: 'Allocation table',    icon: '⬡', desc: 'Per-road drone counts' },
+      { key: 'dispatch',   label: 'Dispatch strategies', icon: '⊗', desc: 'Nearest · battery · balanced' },
+    ],
+  },
+  {
+    label: 'Tools',
+    items: [
+      { key: 'export', label: 'Export log',  icon: '⬇', desc: 'CSV / JSON download' },
+      { key: 'live',   label: 'Live trial',  icon: '◉', desc: 'Animated simulation' },
+    ],
+  },
+]
+
+// ── Sidebar item ──────────────────────────────────────────────────────────────
+function NavItem({ item, active, onClick, hasResults, running }) {
+  const locked = item.key !== 'configure' && item.key !== 'live' &&
+    item.key !== 'dispatch' && item.key !== 'sensitivity' &&
+    item.key !== 'cdf' && item.key !== 'export' &&
+    !hasResults && !running
+
+  return (
+    <button
+      onClick={() => !locked && onClick(item.key)}
+      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all cursor-pointer group relative
+        ${active
+          ? 'bg-slate-800 text-slate-100'
+          : locked
+            ? 'opacity-40 cursor-not-allowed'
+            : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'}`}
+    >
+      {/* Active indicator */}
+      {active && (
+        <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-blue-400 rounded-r" />
+      )}
+      <span className={`text-[13px] shrink-0 w-4 text-center leading-none
+        ${active ? 'text-blue-400' : 'text-slate-500 group-hover:text-slate-400'}`}>
+        {item.icon}
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className={`text-[11px] font-medium leading-tight truncate
+          ${active ? 'text-slate-100' : ''}`}>
+          {item.label}
+        </div>
+        <div className="text-[9px] text-slate-600 mt-0.5 truncate leading-tight">
+          {item.desc}
+        </div>
+      </div>
+    </button>
+  )
+}
+
+// ── Main content header ───────────────────────────────────────────────────────
+function ContentHeader({ item }) {
+  return (
+    <div className="flex items-center gap-3 mb-6">
+      <span className="flex items-center justify-center w-8 h-8 rounded-lg bg-slate-800 text-blue-400 text-[14px] shrink-0">
+        {item.icon}
+      </span>
+      <div>
+        <div className="text-[18px] font-semibold text-slate-100 tracking-tight leading-tight">
+          {item.label}
+        </div>
+        <div className="text-[11px] text-slate-500 mt-0.5">{item.desc}</div>
+      </div>
+    </div>
+  )
+}
+
+// ── Progress bar ──────────────────────────────────────────────────────────────
+function ProgressBar({ progress }) {
+  if (!progress) return null
+  const pct = progress.total > 0 ? Math.round((progress.done / progress.total) * 100) : 0
+  return (
+    <div className="mt-2">
+      <div className="flex justify-between text-[9px] text-slate-500 mb-1">
+        <span>Running sweep…</span>
+        <span>{pct}%</span>
+      </div>
+      <div className="h-1 bg-slate-800 rounded-full overflow-hidden">
+        <div
+          className="h-full bg-blue-500 rounded-full transition-all duration-150"
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      <div className="text-[8.5px] text-slate-600 mt-1">
+        {progress.done} / {progress.total} trials
+      </div>
+    </div>
+  )
+}
+
 export default function DetectionPage() {
   const [config, setConfig] = useState(DEFAULT_CONFIG)
   const [running, setRunning] = useState(false)
@@ -34,16 +149,14 @@ export default function DetectionPage() {
   const [availabilityByPolicy, setAvailabilityByPolicy] = useState(null)
   const [selectedN, setSelectedN] = useState(10)
   const [livePolicy, setLivePolicy] = useState('riskAware')
-  const [activeTab, setActiveTab] = useState('detection')
+  const [activeSection, setActiveSection] = useState('configure')
+  const [sidebarOpen, setSidebarOpen] = useState(true)
   const cancelledRef = useRef(false)
 
   const handleRun = useCallback(async () => {
     cancelledRef.current = false
     const counts = parseCounts(config.droneCountsText)
-    if (counts.length === 0) {
-      alert('Please enter at least one drone count.')
-      return
-    }
+    if (counts.length === 0) { alert('Please enter at least one drone count.'); return }
     setRunning(true)
     setResults(null)
     setAvailabilityByPolicy(null)
@@ -61,155 +174,289 @@ export default function DetectionPage() {
       if (!cancelledRef.current) {
         setResults(results)
         setAvailabilityByPolicy(availabilityByPolicy)
-        // Pick a sensible default selectedN
-        if (!counts.includes(selectedN) && counts.length > 0) {
+        if (!counts.includes(selectedN) && counts.length > 0)
           setSelectedN(counts[Math.min(counts.length - 1, Math.floor(counts.length / 2))])
-        }
+        setActiveSection('detection')
       }
     } finally {
       setRunning(false)
     }
   }, [config, selectedN])
 
-  const handleCancel = () => {
-    cancelledRef.current = true
-    setRunning(false)
-  }
+  const handleCancel = () => { cancelledRef.current = true; setRunning(false) }
 
-  const tabs = [
-    { key: 'detection', label: 'Detection performance', step: 'Step 2' },
-    { key: 'operational', label: 'Operational metrics', step: 'Step 3' },
-    { key: 'allocation',  label: 'Allocation comparison', step: 'Step 4' },
-    { key: 'live',        label: 'Live trial', step: 'Visual' },
-  ]
+  // Flat list for lookup
+  const allItems = NAV_GROUPS.flatMap((g) => g.items)
+  const activeItem = allItems.find((i) => i.key === activeSection) ?? allItems[0]
+  const counts = parseCounts(config.droneCountsText)
 
   return (
-    <div className="flex-1 min-h-0 overflow-y-auto bg-[var(--color-bg)] p-4 space-y-4">
-      {/* ── Top header strip ────────────────────────────── */}
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div>
-          <div className="text-[15px] font-bold text-[var(--color-white)]">
-            Detection-time evaluation
-          </div>
-          <div className="text-[11px] text-[var(--color-txt2)] mt-0.5 max-w-3xl leading-relaxed">
-            Compares <span style={{ color: POLICIES.uniform.color }}>Uniform</span> versus{' '}
-            <span style={{ color: POLICIES.riskAware.color }}>Risk-aware</span> drone allocation
-            on Beirut roads using Poisson accident arrivals, back-and-forth patrol, and
-            sensing-range detection. Each fleet size is evaluated over multiple Monte Carlo trials.
-          </div>
+    <div className="flex flex-1 min-h-0 overflow-hidden bg-slate-950">
+
+      {/* ── Sidebar ──────────────────────────────────────── */}
+      <aside className={`${sidebarOpen ? 'w-52' : 'w-10'} shrink-0 flex flex-col border-r border-slate-800/80 bg-[#080d18] transition-all duration-200 overflow-hidden`}>
+
+        {/* Sidebar header */}
+        <div className="px-3 py-3 border-b border-slate-800/60 flex items-start justify-between gap-2">
+          {sidebarOpen && (
+            <div className="min-w-0">
+              <div className="text-[9px] font-semibold uppercase tracking-[0.2em] text-blue-400/80 mb-0.5 truncate">
+                Operations
+              </div>
+              <div className="text-[13px] font-semibold text-slate-200 leading-tight truncate">
+                Detection engine
+              </div>
+              <div className="text-[9px] text-slate-600 mt-0.5 truncate">Beirut · 6 corridors</div>
+            </div>
+          )}
+          <button
+            onClick={() => setSidebarOpen(o => !o)}
+            className="shrink-0 w-6 h-6 flex items-center justify-center rounded-md border border-slate-700 text-slate-400 hover:text-slate-200 hover:bg-slate-800 cursor-pointer transition-colors text-[11px] mt-0.5"
+            title={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
+          >
+            {sidebarOpen ? '‹' : '›'}
+          </button>
         </div>
-      </div>
 
-      {/* ── Sweep configuration ─────────────────────────── */}
-      <SweepConfig
-        config={config}
-        onChange={setConfig}
-        onRun={handleRun}
-        onCancel={handleCancel}
-        isRunning={running}
-        progress={progress}
-      />
+        {/* Status pill */}
+        <div className={`px-4 py-2.5 border-b border-slate-800/60 ${sidebarOpen ? '' : 'hidden'}`}>
+          {running ? (
+            <div className="flex items-center gap-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse shrink-0" />
+              <span className="text-[10px] text-amber-400 font-medium">Sweep running</span>
+            </div>
+          ) : results ? (
+            <div className="flex items-center gap-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
+              <span className="text-[10px] text-emerald-400 font-medium">Results ready</span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-slate-600 shrink-0" />
+              <span className="text-[10px] text-slate-500">No sweep run yet</span>
+            </div>
+          )}
+        </div>
 
-      {/* ── Result tabs ─────────────────────────────────── */}
-      <div className="flex items-center gap-1.5 border-b border-[var(--color-border)] pb-2">
-        {tabs.map((t) => {
-          const active = activeTab === t.key
-          return (
+        {/* Nav groups */}
+        <nav className={`flex-1 overflow-y-auto px-2 py-3 space-y-4 ${sidebarOpen ? '' : 'hidden'}`}>
+          {NAV_GROUPS.map((group) => (
+            <div key={group.label}>
+              <div className="px-3 mb-1 text-[8.5px] font-semibold uppercase tracking-[0.18em] text-slate-600">
+                {group.label}
+              </div>
+              <div className="space-y-0.5">
+                {group.items.map((item) => (
+                  <NavItem
+                    key={item.key}
+                    item={item}
+                    active={activeSection === item.key}
+                    onClick={setActiveSection}
+                    hasResults={!!results}
+                    running={running}
+                  />
+                ))}
+              </div>
+            </div>
+          ))}
+        </nav>
+
+        {/* Run / cancel button at sidebar bottom */}
+        <div className={`px-3 py-3 border-t border-slate-800/60 space-y-2 ${sidebarOpen ? '' : 'hidden'}`}>
+          {running ? (
+            <>
+              <ProgressBar progress={progress} />
+              <button
+                onClick={handleCancel}
+                className="w-full py-2 text-[10px] font-semibold rounded-lg border border-red-500/40 text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer"
+              >
+                ✕ Cancel
+              </button>
+            </>
+          ) : (
             <button
-              key={t.key}
-              onClick={() => setActiveTab(t.key)}
-              className={`flex items-center gap-2 px-3 py-1.5 text-[11px] font-semibold rounded-md transition-colors cursor-pointer
-                ${active
-                  ? 'bg-[var(--color-accent)]/15 text-[var(--color-accent)] border border-[var(--color-accent)]/30'
-                  : 'text-[var(--color-txt2)] border border-transparent hover:text-[var(--color-txt)] hover:bg-[#111827]'}`}
+              onClick={handleRun}
+              className="w-full py-2.5 text-[11px] font-bold rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-colors cursor-pointer shadow-[0_0_16px_rgba(59,130,246,0.25)] flex items-center justify-center gap-2"
             >
-              {t.label}
-              <span className="text-[8px] uppercase tracking-wider px-1 py-0.5 rounded bg-white/5 text-[var(--color-txt3)]">
-                {t.step}
-              </span>
+              <span>▶</span> Run sweep
             </button>
-          )
-        })}
-      </div>
-
-      {/* ── Results ──────────────────────────────────────── */}
-      {activeTab === 'detection' && (
-        <div className="space-y-4">
-          {results ? <SummaryCard results={results} /> : null}
-          <PolicyResultsPlots results={results ?? {}} />
+          )}
+          {results && !running && (
+            <div className="text-[8.5px] text-slate-600 text-center">
+              {counts.length} fleet sizes · {config.trialsPerPoint} trials each
+            </div>
+          )}
         </div>
-      )}
+      </aside>
 
-      {activeTab === 'operational' && (
-        <AvailabilityPlots
-          results={results ?? {}}
-          availabilityByPolicy={availabilityByPolicy ?? {}}
-          selectedN={selectedN}
-          onSelectN={setSelectedN}
-        />
-      )}
+      {/* ── Main content ─────────────────────────────────── */}
+      <main className="flex-1 min-w-0 overflow-y-auto p-6 flex flex-col items-center">
+        <div className="w-full max-w-5xl">
 
-      {activeTab === 'allocation' && (
-        <div className="space-y-3">
-          <div className="flex items-center gap-3 flex-wrap">
-            <span className="text-[10px] text-[var(--color-txt3)] uppercase tracking-wider font-semibold">
-              Fleet size
-            </span>
-            {parseCounts(config.droneCountsText).map((n) => (
-              <button
-                key={n}
-                onClick={() => setSelectedN(n)}
-                className={`px-2.5 py-1 text-[11px] font-bold rounded border transition-colors cursor-pointer
-                  ${n === selectedN
-                    ? 'bg-[var(--color-accent)]/20 border-[var(--color-accent)]/40 text-[var(--color-accent)]'
-                    : 'border-[var(--color-border2)] text-[var(--color-txt2)] hover:bg-[#111827]'}`}
-              >
-                N = {n}
-              </button>
-            ))}
+        {/* Section header */}
+        <ContentHeader item={activeItem} />
+
+        {/* ── Configure ── */}
+        {activeSection === 'configure' && (
+          <div className="space-y-4 max-w-3xl">
+            <div className="rounded-xl border border-slate-800/80 bg-slate-900/40 px-5 py-4">
+              <div className="text-[10px] text-slate-500 uppercase tracking-widest font-semibold mb-3">
+                About this module
+              </div>
+              <p className="text-[11.5px] text-slate-400 leading-relaxed">
+                Compares{' '}
+                <span style={{ color: POLICIES.uniform.color }} className="font-semibold">Uniform</span>
+                {' '}versus{' '}
+                <span style={{ color: POLICIES.riskAware.color }} className="font-semibold">Risk-aware</span>
+                {' '}drone allocation on Beirut corridors using Poisson accident arrivals,
+                back-and-forth patrol, and sensing-range detection.
+                Configure the sweep below, then click <strong className="text-slate-300">Run sweep</strong> in the sidebar.
+                Results populate the analysis sections automatically.
+              </p>
+            </div>
+            <SweepConfig
+              config={config}
+              onChange={setConfig}
+              onRun={handleRun}
+              onCancel={handleCancel}
+              isRunning={running}
+              progress={progress}
+            />
           </div>
-          <AllocationTable N={selectedN} />
-        </div>
-      )}
+        )}
 
-      {activeTab === 'live' && (
-        <div className="space-y-3">
-          <div className="flex items-center gap-3 flex-wrap">
-            <span className="text-[10px] text-[var(--color-txt3)] uppercase tracking-wider font-semibold">
-              Policy
-            </span>
-            {Object.values(POLICIES).map((p) => (
-              <button
-                key={p.key}
-                onClick={() => setLivePolicy(p.key)}
-                className={`px-2.5 py-1 text-[11px] font-bold rounded border transition-colors cursor-pointer
-                  ${p.key === livePolicy
-                    ? 'border-current'
-                    : 'border-[var(--color-border2)] text-[var(--color-txt2)] hover:bg-[#111827]'}`}
-                style={{ color: p.key === livePolicy ? p.color : undefined }}
-              >
-                {p.label}
-              </button>
-            ))}
-            <span className="text-[10px] text-[var(--color-txt3)] uppercase tracking-wider font-semibold ml-3">
-              Fleet size
-            </span>
-            {parseCounts(config.droneCountsText).map((n) => (
-              <button
-                key={n}
-                onClick={() => setSelectedN(n)}
-                className={`px-2 py-1 text-[10px] font-bold rounded border transition-colors cursor-pointer
-                  ${n === selectedN
-                    ? 'bg-[var(--color-accent)]/20 border-[var(--color-accent)]/40 text-[var(--color-accent)]'
-                    : 'border-[var(--color-border2)] text-[var(--color-txt2)] hover:bg-[#111827]'}`}
-              >
-                {n}
-              </button>
-            ))}
+        {/* ── Detection performance ── */}
+        {activeSection === 'detection' && (
+          <div className="space-y-4">
+            {results ? <SummaryCard results={results} /> : (
+              <EmptyState label="Run a sweep to see detection performance results." />
+            )}
+            <PolicyResultsPlots results={results ?? {}} />
           </div>
-          <LiveMap N={selectedN} policyKey={livePolicy} />
+        )}
+
+        {/* ── P(Td < τ) CDF ── */}
+        {activeSection === 'cdf' && (
+          <DetectionCDFPlots results={results ?? {}} />
+        )}
+
+        {/* ── Operational metrics ── */}
+        {activeSection === 'operational' && (
+          <AvailabilityPlots
+            results={results ?? {}}
+            availabilityByPolicy={availabilityByPolicy ?? {}}
+            selectedN={selectedN}
+            onSelectN={setSelectedN}
+          />
+        )}
+
+        {/* ── Sensitivity analysis ── */}
+        {activeSection === 'sensitivity' && (
+          <SensitivityPlots />
+        )}
+
+        {/* ── Allocation table ── */}
+        {activeSection === 'allocation' && (
+          <div className="space-y-4">
+            {/* Fleet picker */}
+            <div className="rounded-xl border border-slate-800/80 bg-slate-900/40 px-5 py-3 flex items-center gap-3 flex-wrap">
+              <span className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold">Fleet size</span>
+              {counts.map((n) => (
+                <button
+                  key={n}
+                  onClick={() => setSelectedN(n)}
+                  className={`px-3 py-1 text-[11px] font-bold rounded-lg border transition-colors cursor-pointer
+                    ${n === selectedN
+                      ? 'bg-blue-500/20 border-blue-400/40 text-blue-300'
+                      : 'border-slate-700 text-slate-400 hover:bg-slate-800'}`}
+                >
+                  N = {n}
+                </button>
+              ))}
+              {counts.length === 0 && (
+                <span className="text-[10px] text-slate-600">Configure fleet sizes in Setup → Configure.</span>
+              )}
+            </div>
+            <AllocationTable N={selectedN} />
+          </div>
+        )}
+
+        {/* ── Dispatch comparison ── */}
+        {activeSection === 'dispatch' && (
+          <DispatchComparison />
+        )}
+
+        {/* ── Export ── */}
+        {activeSection === 'export' && (
+          <SimExport params={config.params} />
+        )}
+
+        {/* ── Live trial ── */}
+        {activeSection === 'live' && (
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="rounded-xl border border-slate-800/80 bg-slate-900/40 px-5 py-4">
+                <div className="text-[9px] text-slate-500 uppercase tracking-[0.16em] font-semibold mb-2.5">
+                  Allocation policy
+                </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  {Object.values(POLICIES).map((p) => {
+                    const active = p.key === livePolicy
+                    return (
+                      <button
+                        key={p.key}
+                        onClick={() => setLivePolicy(p.key)}
+                        className={`flex items-center gap-2 px-3.5 py-1.5 text-[11px] font-medium rounded-lg transition-all cursor-pointer ring-1
+                          ${active ? '' : 'ring-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'}`}
+                        style={active ? {
+                          background: p.color + '18',
+                          color: p.color,
+                          boxShadow: `inset 0 0 0 1px ${p.color}55`,
+                        } : undefined}
+                      >
+                        <span className="w-1.5 h-1.5 rounded-full" style={{ background: p.color }} />
+                        {p.label}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+              <div className="rounded-xl border border-slate-800/80 bg-slate-900/40 px-5 py-4">
+                <div className="text-[9px] text-slate-500 uppercase tracking-[0.16em] font-semibold mb-2.5">
+                  Fleet size
+                </div>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {counts.map((n) => {
+                    const active = n === selectedN
+                    return (
+                      <button
+                        key={n}
+                        onClick={() => setSelectedN(n)}
+                        className={`px-3 py-1.5 text-[11px] font-medium rounded-lg transition-colors cursor-pointer min-w-[48px] ring-1
+                          ${active
+                            ? 'bg-blue-500/15 ring-blue-400/40 text-blue-200'
+                            : 'ring-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'}`}
+                      >
+                        N&nbsp;=&nbsp;{n}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            </div>
+            <LiveMap N={selectedN} policyKey={livePolicy} params={config.params} />
+          </div>
+        )}
         </div>
-      )}
+      </main>
+    </div>
+  )
+}
+
+function EmptyState({ label }) {
+  return (
+    <div className="rounded-xl border border-dashed border-slate-800 px-6 py-8 text-center">
+      <div className="text-[11px] text-slate-600">{label}</div>
     </div>
   )
 }

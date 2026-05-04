@@ -20,7 +20,7 @@ export default function AllocationTable({ N }) {
           <thead>
             <tr className="text-[var(--color-txt3)] border-b border-[var(--color-border)]">
               <th className="text-left py-1.5 px-2">Road</th>
-              <th className="text-right py-1.5 px-2">Risk score</th>
+              <th className="text-right py-1.5 px-2">Risk score R</th>
               <th className="text-right py-1.5 px-2" style={{ color: POLICIES.uniform.color }}>
                 Uniform
               </th>
@@ -48,7 +48,7 @@ export default function AllocationTable({ N }) {
                     </span>
                   </td>
                   <td className="text-right py-1 px-2 text-[var(--color-txt2)]">
-                    {(r.score * 100).toFixed(1)}
+                    {r.score.toFixed(3)}
                   </td>
                   <td
                     className="text-right py-1 px-2 font-bold"
@@ -89,7 +89,7 @@ export default function AllocationTable({ N }) {
       </div>
       <div className="mt-3 text-[9.5px] text-[var(--color-txt3)] leading-relaxed">
         <span className="text-[var(--color-txt2)]">Δ &gt; 0:</span> the risk-aware policy assigns more drones than uniform to that road.
-        Roads with high risk scores typically gain drones; lower-risk roads cede them.
+        Risk score R = 0.40·A + 0.25·T + 0.20·S + 0.15·C (normalised composite); higher-risk roads gain drones, lower-risk roads cede them.
       </div>
     </div>
   )

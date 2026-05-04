@@ -84,45 +84,52 @@ export default function SummaryCard({ results }) {
   const summary = computeSummary(results)
 
   return (
-    <div className="rounded-xl border border-[var(--color-border)] bg-[#0d1225] p-4">
+    <div className="rounded-2xl ring-1 ring-slate-800/80 bg-slate-900/40 p-5">
       <div className="flex items-start justify-between gap-3 mb-3">
         <div>
-          <div className="text-[10px] text-[var(--color-txt2)] uppercase tracking-widest font-semibold">
-            Summary &amp; tradeoffs
+          <div className="flex items-center gap-2.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+            <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-200">
+              Summary &amp; tradeoffs
+            </span>
           </div>
-          <div className="text-[10px] text-[var(--color-txt3)] mt-0.5">
+          <div className="text-[10.5px] text-slate-500 mt-1.5">
             Auto-generated from the sweep. Use this as a starting point for the Step 4 discussion.
           </div>
         </div>
         <button
           onClick={() => downloadCsv(toCsv(results), 'sweep_results.csv')}
-          className="px-3 py-1 text-[10px] font-semibold rounded-md border border-[var(--color-border2)] text-[var(--color-txt2)] hover:bg-[#111827] cursor-pointer"
+          className="px-3 py-1.5 text-[10.5px] font-medium rounded-lg ring-1 ring-slate-700 text-slate-300 hover:text-slate-100 hover:bg-slate-800/60 cursor-pointer transition-colors"
         >
-          ⬇ CSV
+          ⬇ Export CSV
         </button>
       </div>
 
       {!summary ? (
-        <div className="text-[11px] text-[var(--color-txt2)]">
+        <div className="text-[11.5px] text-slate-400">
           Run a sweep with at least two policies to see the comparison.
         </div>
       ) : (
-        <div className="space-y-2 text-[11px] text-[var(--color-txt)] leading-relaxed">
+        <div className="space-y-2.5 text-[11.5px] text-slate-200 leading-relaxed">
           <p>
-            At the smallest fleet size <span className="font-mono font-bold">N = {summary.smallN}</span>,{' '}
-            <span style={{ color: POLICIES[summary.smallNWinner]?.color }}>
+            At the smallest fleet size <span className="font-mono font-medium text-slate-100">N = {summary.smallN}</span>,{' '}
+            <span style={{ color: POLICIES[summary.smallNWinner]?.color }} className="font-medium">
               {summary.smallNWinner === 'tie' ? 'both policies are within 1 s' : `${POLICIES[summary.smallNWinner]?.label} wins`}
             </span>{' '}
-            ({summary.a}: {summary.smallN_a?.toFixed(0) ?? '—'} s vs {summary.b}: {summary.smallN_b?.toFixed(0) ?? '—'} s avg detection time).
+            <span className="text-slate-400">
+              ({summary.a}: {summary.smallN_a?.toFixed(0) ?? '—'} s vs {summary.b}: {summary.smallN_b?.toFixed(0) ?? '—'} s avg detection time).
+            </span>
           </p>
           <p>
-            At the largest fleet size <span className="font-mono font-bold">N = {summary.largeN}</span>,{' '}
-            <span style={{ color: POLICIES[summary.largeNWinner]?.color }}>
+            At the largest fleet size <span className="font-mono font-medium text-slate-100">N = {summary.largeN}</span>,{' '}
+            <span style={{ color: POLICIES[summary.largeNWinner]?.color }} className="font-medium">
               {summary.largeNWinner === 'tie' ? 'both policies are within 1 s' : `${POLICIES[summary.largeNWinner]?.label} wins`}
             </span>{' '}
-            ({summary.a}: {summary.largeN_a?.toFixed(0) ?? '—'} s vs {summary.b}: {summary.largeN_b?.toFixed(0) ?? '—'} s avg detection time).
+            <span className="text-slate-400">
+              ({summary.a}: {summary.largeN_a?.toFixed(0) ?? '—'} s vs {summary.b}: {summary.largeN_b?.toFixed(0) ?? '—'} s avg detection time).
+            </span>
           </p>
-          <p className="text-[var(--color-txt2)]">
+          <p className="text-slate-400">
             Tradeoff: risk-aware concentrates drones on the highest-scoring corridors,
             which improves response on those roads at the cost of leaving low-risk roads
             unpatrolled when the fleet is small. Uniform pays a coverage tax on
