@@ -8,30 +8,91 @@ export function renderCanvas(cx, s) {
 
   cx.clearRect(0, 0, W, H);
 
-  /* Sky */
-  const sky = cx.createLinearGradient(0, 0, 0, RY1);
-  sky.addColorStop(0, '#04060d'); sky.addColorStop(1, '#0a1020');
-  cx.fillStyle = sky; cx.fillRect(0, 0, W, RY1);
-  cx.fillStyle = 'rgba(180,200,240,.1)';
-  for (let i = 0; i < 40; i++) { cx.beginPath(); cx.arc((i*173+17)%W, (i*89+5)%(RY1-20), .5, 0, Math.PI*2); cx.fill(); }
+  /* ── Command Center backdrop — lighter forest-tinted with tech grid */
+  // 1) Soft sage/forest gradient base — blends with app forest header
+  const baseG = cx.createRadialGradient(W/2, H/2, 60, W/2, H/2, Math.max(W, H));
+  baseG.addColorStop(0, '#3E5945');
+  baseG.addColorStop(0.6, '#2F4636');
+  baseG.addColorStop(1, '#22332A');
+  cx.fillStyle = baseG; cx.fillRect(0, 0, W, H);
 
-  /* Trees */
-  cx.fillStyle = '#0b1510';
-  for (let tx = 0; tx < W; tx += 20) {
-    const th = 12 + Math.sin(tx*.22)*5;
-    cx.beginPath(); cx.moveTo(tx-7,RY1); cx.lineTo(tx,RY1-th); cx.lineTo(tx+7,RY1); cx.closePath(); cx.fill();
+  // 2) Subtle two-tone micro-pattern (lifted to warmer slate-green)
+  cx.save();
+  cx.globalAlpha = 0.14;
+  for (let y = 0; y < H; y += 6) {
+    for (let x = 0; x < W; x += 6) {
+      const odd = ((x / 6) + (y / 6)) & 1;
+      cx.fillStyle = odd ? '#46624C' : '#2F4636';
+      cx.fillRect(x, y, 3, 3);
+      cx.fillStyle = odd ? '#2F4636' : '#46624C';
+      cx.fillRect(x + 3, y + 3, 3, 3);
+    }
   }
-  cx.fillStyle = '#101e0c'; cx.fillRect(0, RY1-8, W, 10);
+  cx.restore();
 
-  /* Road */
-  cx.fillStyle = '#141820'; cx.fillRect(RX1, RY1, RX2-RX1, RY2-RY1);
-  cx.strokeStyle = '#a08820'; cx.lineWidth = 2;
-  cx.beginPath(); cx.moveTo(RX1,RY1); cx.lineTo(RX2,RY1); cx.stroke();
-  cx.beginPath(); cx.moveTo(RX1,RY2); cx.lineTo(RX2,RY2); cx.stroke();
-  cx.strokeStyle = 'rgba(200,200,200,.18)'; cx.lineWidth = 1.5; cx.setLineDash([16,12]);
-  cx.beginPath(); cx.moveTo(RX1,RCY); cx.lineTo(RX2,RCY); cx.stroke(); cx.setLineDash([]);
-  cx.fillStyle = '#0c170a'; cx.fillRect(0, RY2, W, H-RY2);
-  cx.fillStyle = '#10151c'; cx.fillRect(RX1, RY2, RX2-RX1, 6);
+  // 3) Tech grid lines — major + minor (warmer cream tint)
+  cx.save();
+  cx.strokeStyle = 'rgba(245, 240, 220, 0.06)';
+  cx.lineWidth = 1;
+  for (let x = 0; x < W; x += 40) {
+    cx.beginPath(); cx.moveTo(x, 0); cx.lineTo(x, H); cx.stroke();
+  }
+  for (let y = 0; y < H; y += 40) {
+    cx.beginPath(); cx.moveTo(0, y); cx.lineTo(W, y); cx.stroke();
+  }
+  cx.strokeStyle = 'rgba(245, 240, 220, 0.12)';
+  for (let x = 0; x < W; x += 200) {
+    cx.beginPath(); cx.moveTo(x, 0); cx.lineTo(x, H); cx.stroke();
+  }
+  for (let y = 0; y < H; y += 200) {
+    cx.beginPath(); cx.moveTo(0, y); cx.lineTo(W, y); cx.stroke();
+  }
+  cx.restore();
+
+  // 4) Ambient occlusion — softer corners, doesn't darken too much
+  const vg = cx.createRadialGradient(W/2, H/2, Math.min(W,H)*0.4, W/2, H/2, Math.max(W,H)*0.7);
+  vg.addColorStop(0, 'rgba(0,0,0,0)');
+  vg.addColorStop(1, 'rgba(0,0,0,0.30)');
+  cx.fillStyle = vg; cx.fillRect(0, 0, W, H);
+
+  /* ── Roadway with neon lane markers — lighter slate asphalt ──────── */
+  const roadG = cx.createLinearGradient(0, RY1, 0, RY2);
+  roadG.addColorStop(0, '#4A5160');
+  roadG.addColorStop(0.5, '#3D4351');
+  roadG.addColorStop(1, '#4A5160');
+  cx.fillStyle = roadG; cx.fillRect(RX1, RY1, RX2-RX1, RY2-RY1);
+
+  // Edge lane markers — glowing amber
+  cx.save();
+  cx.shadowColor = 'rgba(245, 158, 11, 0.55)';
+  cx.shadowBlur = 10;
+  cx.strokeStyle = '#B45309';
+  cx.lineWidth = 2;
+  cx.beginPath(); cx.moveTo(RX1, RY1); cx.lineTo(RX2, RY1); cx.stroke();
+  cx.beginPath(); cx.moveTo(RX1, RY2); cx.lineTo(RX2, RY2); cx.stroke();
+  cx.restore();
+
+  // Centre dashed lane — glowing cyan
+  cx.save();
+  cx.shadowColor = 'rgba(34, 211, 238, 0.55)';
+  cx.shadowBlur = 8;
+  cx.strokeStyle = 'rgba(103, 232, 249, 0.85)';
+  cx.lineWidth = 1.8;
+  cx.setLineDash([16, 12]);
+  cx.beginPath(); cx.moveTo(RX1, RCY); cx.lineTo(RX2, RCY); cx.stroke();
+  cx.setLineDash([]);
+  cx.restore();
+
+  // Bottom terrain — soft forest-sage that flows into the page chrome
+  const terrG = cx.createLinearGradient(0, RY2, 0, H);
+  terrG.addColorStop(0, '#2C4434');
+  terrG.addColorStop(1, '#1F3326');
+  cx.fillStyle = terrG; cx.fillRect(0, RY2, W, H-RY2);
+  // Curb shadow under road
+  const curbG = cx.createLinearGradient(0, RY2, 0, RY2 + 12);
+  curbG.addColorStop(0, 'rgba(0,0,0,0.35)');
+  curbG.addColorStop(1, 'rgba(0,0,0,0)');
+  cx.fillStyle = curbG; cx.fillRect(RX1, RY2, RX2-RX1, 12);
 
   /* ── Docking Stations ── */
   for (let di = 0; di < docks.length; di++) {
@@ -42,12 +103,43 @@ export function renderCanvas(cx, s) {
 
     cx.save(); cx.translate(dock.x, dock.y);
 
-    /* Dock body */
-    cx.fillStyle = '#121a28'; cx.fillRect(-44, -14, 88, 28);
-    cx.strokeStyle = '#1a2a40'; cx.lineWidth = 1.2; cx.strokeRect(-44, -14, 88, 28);
+    /* Frosted-glass dock zone with outer glow */
+    // Outer glow halo
+    const haloG = cx.createRadialGradient(0, 0, 16, 0, 0, 70);
+    haloG.addColorStop(0, 'rgba(34, 211, 238, 0.22)');
+    haloG.addColorStop(1, 'rgba(34, 211, 238, 0.0)');
+    cx.fillStyle = haloG;
+    cx.fillRect(-70, -40, 140, 80);
+
+    // Frosted-glass body — translucent gradient with inner highlight
+    const glassG = cx.createLinearGradient(0, -14, 0, 14);
+    glassG.addColorStop(0, 'rgba(255,255,255,0.10)');
+    glassG.addColorStop(0.5, 'rgba(255,255,255,0.04)');
+    glassG.addColorStop(1, 'rgba(255,255,255,0.08)');
+    cx.fillStyle = glassG;
+    cx.fillRect(-44, -14, 88, 28);
+
+    // Subtle scan-line shimmer on glass
+    cx.save();
+    cx.globalAlpha = 0.10;
+    cx.strokeStyle = '#0E7490';
+    cx.lineWidth = 0.5;
+    for (let yy = -12; yy <= 12; yy += 4) {
+      cx.beginPath(); cx.moveTo(-43, yy); cx.lineTo(43, yy); cx.stroke();
+    }
+    cx.restore();
+
+    // Cyan border with glow
+    cx.save();
+    cx.shadowColor = 'rgba(34, 211, 238, 0.55)';
+    cx.shadowBlur = 8;
+    cx.strokeStyle = 'rgba(103, 232, 249, 0.75)';
+    cx.lineWidth = 1.2;
+    cx.strokeRect(-44, -14, 88, 28);
+    cx.restore();
 
     /* Charging strut symbol */
-    cx.strokeStyle = 'rgba(20,184,166,.4)'; cx.lineWidth = 1;
+    cx.strokeStyle = 'rgba(103, 232, 249, .55)'; cx.lineWidth = 1;
     cx.beginPath(); cx.moveTo(-12,-6); cx.lineTo(-12,6); cx.moveTo(-12,0); cx.lineTo(12,0); cx.moveTo(12,-6); cx.lineTo(12,6); cx.stroke();
 
     /* Draw reserve drones inside their dock bay */
@@ -56,7 +148,7 @@ export function renderCanvas(cx, s) {
       if (rd.state === 'docked') {
         const rx = -28 + ri * 22;
         /* Battery fill colour */
-        const bc = rd.battery > 60 ? '#14b8a6' : rd.battery > 30 ? '#f59e0b' : '#ef4444';
+        const bc = rd.battery > 60 ? '#14b8a6' : rd.battery > 30 ? '#B45309' : '#ef4444';
         cx.fillStyle = '#0d3730'; cx.fillRect(rx-6, -8, 12, 8);
         cx.strokeStyle = bc; cx.lineWidth = .8; cx.strokeRect(rx-6, -8, 12, 8);
         /* Battery level bar inside the bay */
@@ -73,13 +165,17 @@ export function renderCanvas(cx, s) {
 
     cx.restore();
 
-    /* Dock labels */
-    cx.font = '600 8px "Outfit",sans-serif'; cx.fillStyle = '#14b8a6'; cx.textAlign = 'center';
+    /* Dock labels — white bold with subtle cyan glow */
+    cx.save();
+    cx.shadowColor = 'rgba(34, 211, 238, 0.7)';
+    cx.shadowBlur = 6;
+    cx.font = '700 9px "Outfit",sans-serif'; cx.fillStyle = '#FFFFFF'; cx.textAlign = 'center';
     cx.fillText(dock.label, dock.x, dock.y + 22);
+    cx.restore();
 
     /* Reserve count for this dock */
     const dockedCount = dockReserves.filter(rd => rd.state === 'docked').length;
-    cx.font = '600 7px "JetBrains Mono",monospace'; cx.fillStyle = '#0d9488';
+    cx.font = '600 7px "JetBrains Mono",monospace'; cx.fillStyle = '#0E7490';
     cx.fillText(`${dockedCount}/${dockReserves.length} ready`, dock.x, dock.y + 31);
 
     /* Battery bar under label showing average charge */
@@ -87,7 +183,7 @@ export function renderCanvas(cx, s) {
       const avgBat = dockReserves.reduce((s, r) => s + r.battery, 0) / dockReserves.length;
       const bw = 44;
       cx.fillStyle = '#1e293b'; cx.fillRect(dock.x - bw/2, dock.y + 34, bw, 3);
-      const bc = avgBat > 60 ? '#14b8a6' : avgBat > 30 ? '#f59e0b' : '#ef4444';
+      const bc = avgBat > 60 ? '#14b8a6' : avgBat > 30 ? '#B45309' : '#ef4444';
       cx.fillStyle = bc; cx.fillRect(dock.x - bw/2, dock.y + 34, bw * (avgBat / 100), 3);
     }
   }
@@ -146,12 +242,12 @@ export function renderCanvas(cx, s) {
     cx.restore();
   }
 
-  /* Drones */
+  /* Drones — brighter accent palette so they pop on the lighter slate road */
   const colorMap = {
-    idle:['#1a2030','#3a4a68'], reached:['#1a0e08','#b04020'], ackSender:['#0e2018','#10b981'],
-    deploy:['#150a28','#7c3aed'], flying:['#150a28','#7c3aed'], backup:['#1a1400','#d97706'],
-    arrived:['#052e16','#059669'], returning:['#0a2020','#14b8a6'],
-    docked:['#0a1515','#0d9488'], returningToPatrol:['#0e1e20','#22d3ee'],
+    idle:['#0F1A2B','#0E7490'], reached:['#2A0E08','#FB923C'], ackSender:['#0A2418','#047857'],
+    deploy:['#1B0E3A','#A78BFA'], flying:['#1B0E3A','#A78BFA'], backup:['#2A1A00','#B45309'],
+    arrived:['#062E1B','#22C55E'], returning:['#0A2A2A','#0F766E'],
+    docked:['#0A1F1F','#0F766E'], returningToPatrol:['#0E2A2C','#0E7490'],
   };
 
   for (const d of drones) {
@@ -159,7 +255,12 @@ export function renderCanvas(cx, s) {
     const [bF, aF] = c;
     cx.save(); cx.translate(d.x, d.y);
     const shS = (d.state === 'flying' || d.state === 'returning') ? .5 : 1;
-    cx.beginPath(); cx.ellipse(0,14*shS,12*shS,3.5*shS,0,0,Math.PI*2); cx.fillStyle = 'rgba(0,0,0,.2)'; cx.fill();
+    // Soft halo so the drone reads against the slate road
+    const halo = cx.createRadialGradient(0, 0, 4, 0, 0, 22);
+    halo.addColorStop(0, aF + '55');
+    halo.addColorStop(1, aF + '00');
+    cx.fillStyle = halo; cx.fillRect(-22, -22, 44, 44);
+    cx.beginPath(); cx.ellipse(0,14*shS,12*shS,3.5*shS,0,0,Math.PI*2); cx.fillStyle = 'rgba(0,0,0,.25)'; cx.fill();
     const AA = Math.PI/4, arm = 15;
     const angles = [AA, AA+Math.PI/2, AA+Math.PI, AA+3*Math.PI/2];
     for (let ai = 0; ai < 4; ai++) {
@@ -179,11 +280,11 @@ export function renderCanvas(cx, s) {
     cx.restore();
     cx.font = '600 8px "Outfit",sans-serif'; cx.fillStyle = aF; cx.textAlign = 'center';
     cx.fillText('D'+d.id, d.x, d.y+26);
-    const bw = 20, bc2 = d.battery>50?'#10b981':d.battery>30?'#f59e0b':'#ef4444';
+    const bw = 20, bc2 = d.battery>50?'#10b981':d.battery>30?'#B45309':'#ef4444';
     cx.fillStyle = '#1e293b'; cx.fillRect(d.x-bw/2, d.y+28, bw, 2);
     cx.fillStyle = bc2; cx.fillRect(d.x-bw/2, d.y+28, bw*(d.battery/100), 2);
     if (d.state==='flying'||d.state==='returning') { cx.font='700 7px "JetBrains Mono",monospace'; cx.fillStyle=aF; cx.fillText(d.state==='flying'?'EN ROUTE':'TO DOCK',d.x,d.y-20); }
-    else if (d.state==='arrived') { cx.font='700 7px "JetBrains Mono",monospace'; cx.fillStyle='#34d399'; cx.fillText('ON SITE',d.x,d.y-20); }
+    else if (d.state==='arrived') { cx.font='700 7px "JetBrains Mono",monospace'; cx.fillStyle='#047857'; cx.fillText('ON SITE',d.x,d.y-20); }
     else if (d.state==='docked') { cx.font='700 7px "JetBrains Mono",monospace'; cx.fillStyle='#0d9488'; cx.fillText('CHARGING',d.x,d.y-20); }
     if (d.state==='idle') { cx.save(); cx.translate(d.x,d.y-18); cx.strokeStyle='rgba(80,110,160,.25)'; cx.lineWidth=1; cx.beginPath(); cx.moveTo(-4,0); cx.lineTo(4,0); cx.stroke(); const aw=d.dir; cx.beginPath(); cx.moveTo(aw*4,0); cx.lineTo(aw*1.5,-2.5); cx.lineTo(aw*1.5,2.5); cx.closePath(); cx.fillStyle='rgba(80,110,160,.25)'; cx.fill(); cx.restore(); }
   }
@@ -195,7 +296,7 @@ export function renderCanvas(cx, s) {
     const isBC = isActive && simState === 'broadcasting'
     const isTriggered = isActive && simState !== 'idle'
 
-    const accentColor = isBC ? '#3b82f6' : isTriggered ? '#ef4444' : isActive ? '#22d3ee' : '#1e3a5f'
+    const accentColor = isBC ? '#3b82f6' : isTriggered ? '#ef4444' : isActive ? '#0E7490' : '#1e3a5f'
 
     cx.save()
     cx.translate(sensor.x, sensor.y)
@@ -203,7 +304,7 @@ export function renderCanvas(cx, s) {
     // Glow halo behind active sensors
     if (isActive) {
       const grd = cx.createRadialGradient(0, -22, 4, 0, -22, 46)
-      const glowHex = isBC ? '3b82f6' : isTriggered ? 'ef4444' : '22d3ee'
+      const glowHex = isBC ? '3b82f6' : isTriggered ? 'ef4444' : '0E7490'
       grd.addColorStop(0, '#' + glowHex + '28')
       grd.addColorStop(1, '#' + glowHex + '00')
       cx.fillStyle = grd
@@ -256,7 +357,7 @@ export function renderCanvas(cx, s) {
 
     // Lens — pupil
     cx.beginPath(); cx.arc(0, -28, 2.5, 0, Math.PI * 2)
-    cx.fillStyle = isBC ? '#60a5fa' : isActive ? '#3b82f6' : '#162040'
+    cx.fillStyle = isBC ? '#1D4ED8' : isActive ? '#3b82f6' : '#162040'
     cx.fill()
 
     // Lens — glint
@@ -273,7 +374,7 @@ export function renderCanvas(cx, s) {
     cx.fillText('S' + sensor.id, 0, -4)
 
     // Status LED (top-right corner of housing)
-    const ledColor = isBC ? '#60a5fa' : isTriggered ? '#ef4444' : isActive ? '#22d3ee' : '#1a2840'
+    const ledColor = isBC ? '#1D4ED8' : isTriggered ? '#ef4444' : isActive ? '#0E7490' : '#1a2840'
     const ledBlink = (isBC || isTriggered) ? (0.45 + 0.55 * Math.sin(Date.now() * 0.009 + si)) : 1
     cx.globalAlpha = ledBlink
     cx.beginPath(); cx.arc(11, -42, 2.5, 0, Math.PI * 2)

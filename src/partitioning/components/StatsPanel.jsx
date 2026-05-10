@@ -2,14 +2,14 @@ import { useState } from 'react'
 import { computeRiskBreakdown } from '../lib/roads'
 
 // ─── Road detail popup ────────────────────────────────────────────────────────
-function RoadDetailPopup({ item, onClose }) {
+export function RoadDetailPopup({ item, onClose }) {
   const { road, score, drones, exact, percentage } = item
   const breakdown = computeRiskBreakdown(road)
 
   return (
     <>
       <div
-        className="fixed inset-0 z-40 bg-slate-950/70"
+        className="fixed inset-0 z-40 bg-slate-700/50/70"
         style={{ backdropFilter: 'blur(3px)' }}
         onClick={onClose}
       />
@@ -35,7 +35,7 @@ function RoadDetailPopup({ item, onClose }) {
           </div>
           <button
             onClick={onClose}
-            className="w-7 h-7 flex items-center justify-center rounded-lg ring-1 ring-slate-700 text-slate-400 hover:text-slate-100 hover:bg-slate-800/60 cursor-pointer transition-colors text-[13px] font-medium shrink-0"
+            className="w-7 h-7 flex items-center justify-center rounded-lg ring-1 ring-slate-700 text-slate-400 hover:text-slate-100 hover:bg-slate-700/50 cursor-pointer transition-colors text-[13px] font-medium shrink-0"
           >
             ✕
           </button>
@@ -48,11 +48,11 @@ function RoadDetailPopup({ item, onClose }) {
           <div className="grid grid-cols-4 gap-2">
             {[
               { label: 'Acc/yr',   value: road.accidents,                    color: '#f87171' },
-              { label: 'AADT',     value: `${(road.aadt/1000).toFixed(0)}k`, color: '#fbbf24' },
-              { label: 'Speed',    value: `${road.speedKmh}`,                color: '#60a5fa' },
-              { label: 'Condition',value: `${road.condition}/5`,             color: '#34d399' },
+              { label: 'AADT',     value: `${(road.aadt/1000).toFixed(0)}k`, color: '#B45309' },
+              { label: 'Speed',    value: `${road.speedKmh}`,                color: '#1D4ED8' },
+              { label: 'Condition',value: `${road.condition}/5`,             color: '#047857' },
             ].map((s) => (
-              <div key={s.label} className="rounded-lg ring-1 ring-slate-800 bg-slate-950/40 px-2 py-2 text-center">
+              <div key={s.label} className="rounded-lg ring-1 ring-slate-800 bg-slate-700/40 px-2 py-2 text-center">
                 <div className="text-[8px] text-slate-500 uppercase tracking-wider mb-0.5">{s.label}</div>
                 <div className="text-[15px] font-mono font-semibold tabular-nums" style={{ color: s.color }}>{s.value}</div>
               </div>
@@ -60,16 +60,16 @@ function RoadDetailPopup({ item, onClose }) {
           </div>
 
           {/* Description */}
-          <div className="rounded-lg ring-1 ring-slate-800 bg-slate-950/40 px-3 py-2.5">
+          <div className="rounded-lg ring-1 ring-slate-800 bg-slate-700/40 px-3 py-2.5">
             <div className="text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-500 mb-1.5">Description</div>
             <p className="text-[11px] text-slate-300 leading-relaxed">{road.description}</p>
           </div>
 
           {/* Risk score breakdown */}
-          <div className="rounded-lg ring-1 ring-slate-800 bg-slate-950/40 px-3 py-3">
-            <div className="flex items-center justify-between mb-2 pb-2 border-b border-slate-800">
+          <div className="rounded-lg ring-1 ring-slate-800 bg-slate-700/40 px-3 py-3">
+            <div className="flex items-center justify-between mb-2 pb-2 border-b border-slate-600">
               <div className="text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                Composite risk score — R = 0.40·A + 0.25·T + 0.20·S + 0.15·C
+                Poisson risk — R = 1−e^(−μ),  μ = 0.40·A + 0.25·T + 0.20·S + 0.15·C
               </div>
               <span className="text-[15px] font-mono font-bold tabular-nums" style={{ color: road.color }}>
                 {score.toFixed(3)}
@@ -81,15 +81,15 @@ function RoadDetailPopup({ item, onClose }) {
                 <span>Term</span><span>Raw value</span><span>Norm.</span><span>Weight</span><span>Contrib.</span>
               </div>
               {breakdown.terms.map((t) => (
-                <div key={t.label} className="grid grid-cols-[1fr_auto_auto_auto_auto] gap-x-2 items-center py-1 px-1 rounded hover:bg-slate-800/40">
+                <div key={t.label} className="grid grid-cols-[1fr_auto_auto_auto_auto] gap-x-2 items-center py-1 px-1 rounded hover:bg-slate-700/40">
                   <span className="text-slate-300 text-[10px] truncate">{t.label}</span>
                   <span className="text-slate-500 text-right tabular-nums">{t.raw}</span>
                   <span className="text-slate-400 text-right tabular-nums">{t.norm.toFixed(3)}</span>
-                  <span className="text-purple-400 text-right tabular-nums">{t.weight.toFixed(2)}</span>
+                  <span className="text-purple-700 text-right tabular-nums">{t.weight.toFixed(2)}</span>
                   <span className="font-bold text-right tabular-nums" style={{ color: road.color }}>{t.contrib.toFixed(3)}</span>
                 </div>
               ))}
-              <div className="grid grid-cols-[1fr_auto_auto_auto_auto] gap-x-2 items-center pt-1.5 mt-1 border-t border-slate-800 px-1">
+              <div className="grid grid-cols-[1fr_auto_auto_auto_auto] gap-x-2 items-center pt-1.5 mt-1 border-t border-slate-600 px-1">
                 <span className="text-slate-400 font-semibold">Total R</span>
                 <span /><span /><span />
                 <span className="font-bold text-right tabular-nums" style={{ color: road.color }}>{score.toFixed(3)}</span>
@@ -102,27 +102,27 @@ function RoadDetailPopup({ item, onClose }) {
           </div>
 
           {/* Allocation result */}
-          <div className="rounded-lg ring-1 ring-slate-800 bg-slate-950/40 px-3 py-3">
+          <div className="rounded-lg ring-1 ring-slate-800 bg-slate-700/40 px-3 py-3">
             <div className="text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-500 mb-2.5">Drone allocation</div>
             <div className="grid grid-cols-3 gap-2">
-              <div className="rounded-md bg-slate-900/60 px-2 py-2 text-center">
+              <div className="rounded-md bg-slate-700/50 px-2 py-2 text-center">
                 <div className="text-[8px] text-slate-500 uppercase tracking-wider mb-0.5">Assigned</div>
                 <div className="text-[20px] font-mono font-semibold tabular-nums" style={{ color: road.color }}>{drones}</div>
                 <div className="text-[8px] text-slate-500">drone{drones !== 1 ? 's' : ''}</div>
               </div>
-              <div className="rounded-md bg-slate-900/60 px-2 py-2 text-center">
+              <div className="rounded-md bg-slate-700/50 px-2 py-2 text-center">
                 <div className="text-[8px] text-slate-500 uppercase tracking-wider mb-0.5">Exact</div>
                 <div className="text-[14px] font-mono font-semibold text-slate-100 tabular-nums">{exact.toFixed(3)}</div>
                 <div className="text-[8px] text-slate-500">proportional</div>
               </div>
-              <div className="rounded-md bg-slate-900/60 px-2 py-2 text-center">
+              <div className="rounded-md bg-slate-700/50 px-2 py-2 text-center">
                 <div className="text-[8px] text-slate-500 uppercase tracking-wider mb-0.5">Risk share</div>
-                <div className="text-[14px] font-mono font-semibold text-purple-300 tabular-nums">{percentage.toFixed(1)}%</div>
+                <div className="text-[14px] font-mono font-semibold text-purple-800 tabular-nums">{percentage.toFixed(1)}%</div>
                 <div className="text-[8px] text-slate-500">of total</div>
               </div>
             </div>
             <div className="mt-2.5 flex items-center gap-2">
-              <div className="flex-1 h-1.5 rounded-full overflow-hidden bg-slate-900">
+              <div className="flex-1 h-1.5 rounded-full overflow-hidden bg-slate-700/40">
                 <div className="h-full rounded-full" style={{ width: `${Math.min(percentage, 100)}%`, background: road.color }} />
               </div>
               <span className="text-[10px] font-mono shrink-0 text-slate-400">{road.lengthKm} km</span>
@@ -130,9 +130,9 @@ function RoadDetailPopup({ item, onClose }) {
           </div>
 
           {/* Source */}
-          <div className="rounded-lg ring-1 ring-amber-500/25 bg-amber-500/[0.04] px-3 py-2">
+          <div className="rounded-lg ring-1 ring-amber-700/25 bg-amber-500/[0.04] px-3 py-2">
             <div className="flex items-center gap-1.5 mb-1">
-              <div className="text-[8.5px] font-semibold uppercase tracking-[0.14em] text-amber-300/90">Data status</div>
+              <div className="text-[8.5px] font-semibold uppercase tracking-[0.14em] text-amber-700/90">Data status</div>
             </div>
             <p className="text-[9.5px] text-slate-300 leading-relaxed">{road.source}</p>
             <p className="text-[8.5px] text-slate-500 leading-relaxed mt-1.5 italic">
@@ -143,7 +143,7 @@ function RoadDetailPopup({ item, onClose }) {
           </div>
         </div>
 
-        <div className="px-5 py-3 border-t border-slate-800 shrink-0">
+        <div className="px-5 py-3 border-t border-slate-600 shrink-0">
           <button
             onClick={onClose}
             className="w-full py-2 rounded-lg text-[11px] font-semibold cursor-pointer hover:opacity-90 transition-opacity text-white"
@@ -170,8 +170,8 @@ function RoadRow({ item, isSelected, onSelect, onOpenDetail, totalDrones }) {
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(road.id) } }}
       className={`w-full text-left rounded-lg ring-1 px-3 py-2.5 transition-all cursor-pointer
         ${isSelected
-          ? 'bg-slate-900/60 ring-slate-700'
-          : 'bg-slate-950/40 ring-slate-800 hover:bg-slate-900/40 hover:ring-slate-700'}`}
+          ? 'bg-slate-700/50 ring-slate-700'
+          : 'bg-slate-700/40 ring-slate-800 hover:bg-slate-700/40 hover:ring-slate-700'}`}
       style={isSelected ? { boxShadow: `inset 3px 0 0 ${road.color}` } : undefined}
     >
       <div className="flex items-center justify-between gap-2 mb-1.5">
@@ -210,7 +210,7 @@ function RoadRow({ item, isSelected, onSelect, onOpenDetail, totalDrones }) {
 
       {/* Crash-frequency bar with allocation share */}
       <div className="flex items-center gap-2">
-        <div className="flex-1 h-[4px] rounded-full bg-slate-900/80 overflow-hidden">
+        <div className="flex-1 h-[4px] rounded-full bg-slate-700/40/80 overflow-hidden">
           <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(percentage, 100)}%`, background: road.color }} />
         </div>
         <span className="text-[9.5px] font-mono text-slate-400 shrink-0 min-w-[100px] text-right tabular-nums">
@@ -221,7 +221,7 @@ function RoadRow({ item, isSelected, onSelect, onOpenDetail, totalDrones }) {
       {/* Allocation hint — show how the integer count came from the exact value */}
       <div className="mt-1.5 text-[9px] text-slate-500 font-mono">
         exact = {exact.toFixed(3)} → ⌊·⌋ = {Math.floor(exact)}
-        {drones > Math.floor(exact) && <span className="text-emerald-400/80"> +1 (largest remainder)</span>}
+        {drones > Math.floor(exact) && <span className="text-emerald-800/80"> +1 (largest remainder)</span>}
       </div>
     </div>
   )
@@ -238,7 +238,7 @@ export default function StatsPanel({ allocations, selectedRoadId, onSelectRoad, 
     <div className="flex flex-col h-full overflow-hidden">
 
       {/* Section header */}
-      <div className="flex items-center justify-between gap-3 px-5 py-3 border-b border-slate-800/70 shrink-0">
+      <div className="flex items-center justify-between gap-3 px-5 py-3 border-b border-slate-600/70 shrink-0">
         <div className="flex items-center gap-2.5">
           <span className="w-1.5 h-1.5 rounded-full bg-purple-400" />
           <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-200">
@@ -249,7 +249,7 @@ export default function StatsPanel({ allocations, selectedRoadId, onSelectRoad, 
         </div>
         <button
           onClick={() => setShowAlgo((s) => !s)}
-          className="text-[10px] font-medium text-slate-400 hover:text-slate-200 cursor-pointer flex items-center gap-1.5 px-2 py-1 rounded-md hover:bg-slate-800/60 transition-colors"
+          className="text-[10px] font-medium text-slate-400 hover:text-slate-200 cursor-pointer flex items-center gap-1.5 px-2 py-1 rounded-md hover:bg-slate-700/50 transition-colors"
         >
           <span className="text-slate-500">{showAlgo ? '▾' : '▸'}</span>
           {showAlgo ? 'Hide' : 'Show'} algorithm
@@ -258,7 +258,7 @@ export default function StatsPanel({ allocations, selectedRoadId, onSelectRoad, 
 
       {/* Optional algorithm panel */}
       {showAlgo && (
-        <div className="px-5 py-3 border-b border-slate-800/70 shrink-0 bg-slate-950/40">
+        <div className="px-5 py-3 border-b border-slate-600/70 shrink-0 bg-slate-700/40">
           <div className="text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-500 mb-2">
             Crash-frequency allocation · Hamilton largest remainder
           </div>
@@ -268,7 +268,7 @@ export default function StatsPanel({ allocations, selectedRoadId, onSelectRoad, 
             <div>3.  <span className="text-slate-300">alloc<sub>i</sub></span> = ⌊exact<sub>i</sub>⌋ <span className="text-slate-500">(integer floor)</span></div>
             <div>4.  Distribute leftover drones to roads with the largest fractional part</div>
           </div>
-          <div className="mt-2.5 pt-2 border-t border-slate-800 text-[9px] text-slate-500 leading-relaxed">
+          <div className="mt-2.5 pt-2 border-t border-slate-600 text-[9px] text-slate-500 leading-relaxed">
             Integer counts always sum exactly to the fleet size. No road can be over-allocated.
           </div>
           <div className="mt-1.5 text-[9px] text-slate-500 leading-relaxed">

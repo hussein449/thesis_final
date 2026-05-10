@@ -22,7 +22,7 @@ export default function MapView({ scenario, drone1, drone2, onDrag, linkOk, link
   const markersRef = useRef({ m1: null, m2: null, line: null })
 
   // Determine link line color from margin
-  const lineColor = !linkOk ? '#ef4444' : linkMargin > 20 ? '#10b981' : linkMargin > 10 ? '#f59e0b' : '#ef4444'
+  const lineColor = !linkOk ? '#ef4444' : linkMargin > 20 ? '#10b981' : linkMargin > 10 ? '#B45309' : '#ef4444'
   const lineOpacity = linkOk ? 0.7 : 0.4
 
   useEffect(() => {

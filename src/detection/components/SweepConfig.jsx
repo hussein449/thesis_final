@@ -14,7 +14,7 @@ function NumberField({ label, value, onChange, hint, min, max, step = 1 }) {
         min={min}
         max={max}
         step={step}
-        className="bg-slate-950/60 ring-1 ring-slate-800 rounded-lg px-2.5 py-1.5 text-[12px] font-mono text-slate-100 focus:outline-none focus:ring-blue-400/60 transition"
+        className="bg-slate-700/50 ring-1 ring-slate-800 rounded-lg px-2.5 py-1.5 text-[12px] font-mono text-slate-100 focus:outline-none focus:ring-blue-700/60 transition"
       />
       {hint && (
         <span className="text-[9px] text-slate-500">{hint}</span>
@@ -33,7 +33,7 @@ function TextField({ label, value, onChange, hint }) {
         type="text"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="bg-slate-950/60 ring-1 ring-slate-800 rounded-lg px-2.5 py-1.5 text-[12px] font-mono text-slate-100 focus:outline-none focus:ring-blue-400/60 transition"
+        className="bg-slate-700/50 ring-1 ring-slate-800 rounded-lg px-2.5 py-1.5 text-[12px] font-mono text-slate-100 focus:outline-none focus:ring-blue-700/60 transition"
       />
       {hint && (
         <span className="text-[9px] text-slate-500">{hint}</span>
@@ -78,11 +78,11 @@ export default function SweepConfig({
   const params = { ...DEFAULT_PARAMS, ...config.params }
 
   return (
-    <div className="rounded-2xl ring-1 ring-slate-800/80 bg-slate-900/40 overflow-hidden">
+    <div className="rounded-2xl ring-1 ring-slate-600/80 bg-slate-700/40 overflow-hidden">
       {/* Section header */}
-      <div className="flex items-center justify-between gap-3 px-5 py-3 border-b border-slate-800/70">
+      <div className="flex items-center justify-between gap-3 px-5 py-3 border-b border-slate-600/70">
         <div className="flex items-center gap-2.5">
-          <span className="w-1.5 h-1.5 rounded-full bg-blue-400 shrink-0" />
+          <span className="w-1.5 h-1.5 rounded-full bg-blue-800 shrink-0" />
           <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-200">
             Sweep configuration
           </span>
@@ -91,7 +91,7 @@ export default function SweepConfig({
         </div>
         <button
           onClick={() => setShowAdvanced((s) => !s)}
-          className="text-[10.5px] font-medium text-slate-400 hover:text-slate-200 cursor-pointer flex items-center gap-1.5 px-2 py-1 rounded-md hover:bg-slate-800/60 transition-colors"
+          className="text-[10.5px] font-medium text-slate-400 hover:text-slate-200 cursor-pointer flex items-center gap-1.5 px-2 py-1 rounded-md hover:bg-slate-700/50 transition-colors"
         >
           <span className="text-slate-500">{showAdvanced ? '▾' : '▸'}</span>
           {showAdvanced ? 'Hide' : 'Show'} operational rules
@@ -133,7 +133,7 @@ export default function SweepConfig({
         />
       </div>
 
-      <div className="mt-4 pt-4 border-t border-slate-800/70 flex flex-wrap items-center gap-3">
+      <div className="mt-4 pt-4 border-t border-slate-600/70 flex flex-wrap items-center gap-3">
         <CheckboxField
           label="Enable battery + docking model"
           value={params.enableOperational}
@@ -143,7 +143,7 @@ export default function SweepConfig({
       </div>
 
       {showAdvanced && (
-        <div className="mt-4 pt-4 border-t border-slate-800/70 grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="mt-4 pt-4 border-t border-slate-600/70 grid grid-cols-2 lg:grid-cols-4 gap-3">
           <NumberField
             label="Sensing range (m)"
             value={params.sensingRange}
@@ -205,11 +205,11 @@ export default function SweepConfig({
         </div>
       )}
 
-      <div className="mt-5 pt-4 border-t border-slate-800/70 flex items-center gap-3">
+      <div className="mt-5 pt-4 border-t border-slate-600/70 flex items-center gap-3">
         {!isRunning ? (
           <button
             onClick={onRun}
-            className="px-5 py-2 text-[12px] font-semibold rounded-lg bg-blue-500 text-white hover:bg-blue-400 transition cursor-pointer ring-1 ring-blue-400/30 shadow-[0_4px_18px_-6px_rgba(59,130,246,0.5)]"
+            className="px-5 py-2 text-[12px] font-semibold rounded-lg bg-blue-500 text-white hover:bg-blue-800 transition cursor-pointer ring-1 ring-blue-700/30 shadow-[0_4px_18px_-6px_rgba(59,130,246,0.5)]"
           >
             ▶ Run sweep
           </button>
@@ -223,9 +223,9 @@ export default function SweepConfig({
         )}
         {progress && (
           <div className="flex-1 flex items-center gap-3">
-            <div className="flex-1 h-1.5 rounded-full bg-slate-800/80 overflow-hidden ring-1 ring-slate-800">
+            <div className="flex-1 h-1.5 rounded-full bg-slate-700/50/80 overflow-hidden ring-1 ring-slate-800">
               <div
-                className="h-full bg-blue-400 transition-all"
+                className="h-full bg-blue-800 transition-all"
                 style={{ width: `${(progress.done / Math.max(1, progress.total)) * 100}%` }}
               />
             </div>

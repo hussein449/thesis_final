@@ -60,7 +60,7 @@ export default function SettingsPanel({ config, onChange, onClose }) {
           </div>
           <button
             onClick={onClose}
-            className="w-8 h-8 flex items-center justify-center rounded-md border border-[var(--color-border2)] text-[var(--color-txt2)] hover:bg-[#1a2540] hover:text-white cursor-pointer transition-colors text-[13px] font-bold"
+            className="w-8 h-8 flex items-center justify-center rounded-md border border-[var(--color-border2)] text-[var(--color-txt2)] hover:bg-[var(--color-border2)] hover:text-white cursor-pointer transition-colors text-[13px] font-bold"
           >
             ✕
           </button>

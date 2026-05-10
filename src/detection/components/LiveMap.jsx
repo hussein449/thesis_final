@@ -9,7 +9,35 @@ import {
   makeRng,
 } from '../lib/detection-sim'
 import { POLICIES } from '../lib/policies'
-import { BEIRUT_CENTER, BEIRUT_ZOOM } from '../../partitioning/lib/roads'
+import { BEIRUT_CENTER, BEIRUT_ZOOM, computeRiskScore } from '../../partitioning/lib/roads'
+
+// Deep green → deep amber → deep red gradient — readable against the
+// cream/taupe canvas without the washed-out pastel look of the original.
+//   t = 0.0  →  #166534 (green-800)
+//   t = 0.5  →  #B45309 (amber-700)
+//   t = 1.0  →  #991B1B (red-800)
+function heatColor(t) {
+  const c = Math.max(0, Math.min(1, t))
+  // 3-stop interpolation through dark, fully-saturated stops
+  const stops = [
+    { p: 0.0, r: 0x16, g: 0x65, b: 0x34 },
+    { p: 0.5, r: 0xB4, g: 0x53, b: 0x09 },
+    { p: 1.0, r: 0x99, g: 0x1B, b: 0x1B },
+  ]
+  // Find segment
+  let a = stops[0], b = stops[stops.length - 1]
+  for (let i = 0; i < stops.length - 1; i++) {
+    if (c >= stops[i].p && c <= stops[i + 1].p) {
+      a = stops[i]; b = stops[i + 1]; break
+    }
+  }
+  const span = b.p - a.p || 1
+  const k = (c - a.p) / span
+  const r = Math.round(a.r + (b.r - a.r) * k)
+  const g = Math.round(a.g + (b.g - a.g) * k)
+  const bl = Math.round(a.b + (b.b - a.b) * k)
+  return `rgb(${r},${g},${bl})`
+}
 
 /**
  * Single-trial visualization. Drones move along their assigned segments,
@@ -32,8 +60,20 @@ const DEMO_RATE_BOOST = 20
 // TIME_SCALE=30), fading over the last DETECTED_FADE_SIM, then are removed
 // from the map. Missed accidents are left in place so the operator can see
 // coverage gaps accumulate.
-const DETECTED_LINGER_SIM = 80
-const DETECTED_FADE_SIM = 30
+const DETECTED_LINGER_SIM = 35
+const DETECTED_FADE_SIM = 15
+
+// Reference segment length for the drain-rate scaling. A drone whose patrol
+// segment matches this length drains at exactly params.batteryDrainRate;
+// drones on longer segments drain proportionally faster (more travel per
+// patrol cycle), drones on shorter segments slower. Clamped to [0.7, 1.6]
+// to avoid pathological cases on extreme segments.
+const REF_SEGMENT_LEN = 1500 // m
+
+function segmentDrainFactor(segLen) {
+  const raw = segLen / REF_SEGMENT_LEN
+  return Math.max(0.7, Math.min(1.6, raw))
+}
 
 function makeRoadState(allocation, params, rng) {
   return allocation.map(({ road, drones: nDrones }) => {
@@ -41,16 +81,28 @@ function makeRoadState(allocation, params, rng) {
     const droneStates = []
     if (nDrones > 0) {
       const segLen = path.totalLength / nDrones
+      const segDrainFactor = segmentDrainFactor(segLen)
       for (let i = 0; i < nDrones; i++) {
         const segStart = i * segLen
         const segEnd = (i + 1) * segLen
+        // Stagger initial battery across [35, 100] %. Each drone gets a
+        // random starting charge so their return-to-dock cycles do NOT all
+        // align at t=0 — this prevents the whole fleet hitting the low-
+        // battery threshold simultaneously.
+        const initialBattery = 35 + rng() * 65
+        // Per-drone drain jitter (±12%) on top of the segment-length factor.
+        // Together with the staggered initial battery, this fully
+        // desynchronises charge cycles across the fleet.
+        const drainJitter = 0.88 + rng() * 0.24
         droneStates.push({
           id: `${road.id}-${i}`,
           s: segStart + rng() * segLen,
           dir: rng() < 0.5 ? 1 : -1,
           segStart,
           segEnd,
-          battery: 80 + rng() * 20,
+          segLen,
+          drainFactor: segDrainFactor * drainJitter,
+          battery: initialBattery,
           state: 'patrolling',
           phaseEnd: 0,
         })
@@ -65,16 +117,43 @@ function makeRoadState(allocation, params, rng) {
   })
 }
 
-function droneIcon(color, state) {
+// Rotor positions (top-down quadcopter) within a 32×32 viewBox
+const ROTOR_POS = [[7, 7], [25, 7], [7, 25], [25, 25]]
+
+function droneIcon(color, state, headingDeg = 0) {
   const stateColor =
     state === 'patrolling' ? color
-    : state === 'returning' ? '#facc15'
-    : '#64748b'
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 14 14">
-    <circle cx="7" cy="7" r="5.5" fill="${stateColor}" stroke="#0a0e1a" stroke-width="1.5"/>
-    <circle cx="7" cy="7" r="1.6" fill="#0a0e1a"/>
+    : state === 'returning' ? '#B45309'
+    : '#94a3b8'
+  // Faster spin while patrolling, slow drift when returning, very slow when docked
+  const rotorDur =
+    state === 'patrolling' ? '0.10s'
+    : state === 'returning' ? '0.22s'
+    : '1.2s'
+  const bodyOpacity = state === 'docked' ? 0.55 : 1
+
+  const rotors = ROTOR_POS.map(([cx, cy]) => `
+    <g transform="translate(${cx} ${cy})" opacity="${bodyOpacity}">
+      <circle r="3.6" fill="${stateColor}" fill-opacity="0.16" stroke="${stateColor}" stroke-width="0.7"/>
+      <g>
+        <line x1="-3.2" y1="0" x2="3.2" y2="0" stroke="${stateColor}" stroke-width="1.2" stroke-linecap="round" opacity="0.95"/>
+        <line x1="0" y1="-3.2" x2="0" y2="3.2" stroke="${stateColor}" stroke-width="1.2" stroke-linecap="round" opacity="0.45"/>
+        <animateTransform attributeName="transform" type="rotate" from="0" to="360" dur="${rotorDur}" repeatCount="indefinite"/>
+      </g>
+    </g>`).join('')
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32" style="overflow:visible">
+    <g transform="rotate(${headingDeg} 16 16)" opacity="${bodyOpacity}">
+      <line x1="16" y1="16" x2="7"  y2="7"  stroke="#0a0e1a" stroke-width="2.4" stroke-linecap="round"/>
+      <line x1="16" y1="16" x2="25" y2="7"  stroke="#0a0e1a" stroke-width="2.4" stroke-linecap="round"/>
+      <line x1="16" y1="16" x2="7"  y2="25" stroke="#0a0e1a" stroke-width="2.4" stroke-linecap="round"/>
+      <line x1="16" y1="16" x2="25" y2="25" stroke="#0a0e1a" stroke-width="2.4" stroke-linecap="round"/>
+      ${rotors}
+      <circle cx="16" cy="16" r="4.6" fill="${stateColor}" stroke="#0a0e1a" stroke-width="1.4"/>
+      <path d="M16 8.5 L19 13.5 L13 13.5 Z" fill="${stateColor}" stroke="#0a0e1a" stroke-width="0.9" stroke-linejoin="round"/>
+    </g>
   </svg>`
-  return L.divIcon({ html: svg, className: '', iconSize: [14, 14], iconAnchor: [7, 7] })
+  return L.divIcon({ html: svg, className: '', iconSize: [32, 32], iconAnchor: [16, 16] })
 }
 
 function accidentIcon(status) {
@@ -117,9 +196,20 @@ function statusOf(acc) {
   return 'pending'
 }
 
+function downloadBlob(content, filename, mimeType) {
+  const blob = new Blob([content], { type: mimeType })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
 export default function LiveMap({ N, policyKey, params: paramsProp }) {
   const [, force] = useState(0)
   const [running, setRunning] = useState(false)
+  const [heatmap, setHeatmap] = useState(false)
 
   // Map + Leaflet refs
   const mapElRef = useRef(null)
@@ -149,6 +239,10 @@ export default function LiveMap({ N, policyKey, params: paramsProp }) {
       totalGenerated: 0,
       totalDetected: 0,
       totalMissed: 0,
+      // Event log — every accident generation/detection/miss is recorded
+      // here for the live log panel and CSV/JSON export.
+      events: [],
+      nextAccidentSeq: 1,
     }
     // Reset markers
     droneLayerRef.current.forEach(({ marker }) => marker.remove())
@@ -181,19 +275,26 @@ export default function LiveMap({ N, policyKey, params: paramsProp }) {
 
     polylineLayerRef.current.forEach((pl) => pl.remove())
     polylineLayerRef.current = []
-    for (const rs of stateRef.current.roadStates) {
+    const scores = stateRef.current.roadStates.map((rs) => computeRiskScore(rs.road))
+    const maxScore = Math.max(...scores, 1e-9)
+    for (let i = 0; i < stateRef.current.roadStates.length; i++) {
+      const rs = stateRef.current.roadStates[i]
+      const score = scores[i]
+      const color = heatmap ? heatColor(score / maxScore) : rs.road.color
       const pl = L.polyline(rs.road.polyline, {
-        color: rs.road.color,
+        color,
         weight: 5,
         opacity: 0.85,
       }).addTo(map)
       pl.bindTooltip(
         `<div style="font-family:Outfit,sans-serif;font-size:11px;
-          color:#e8edf5;background:#0c101a;border:1px solid ${rs.road.color}55;
+          color:#e8edf5;background:#0c101a;border:1px solid ${color}88;
           padding:5px 10px;border-radius:7px;white-space:nowrap">
-          <strong style="color:${rs.road.color}">${rs.road.name}</strong><br/>
-          <span style="color:#4e6080">Drones&nbsp;</span>
-          <span style="color:#22d3ee;font-family:JetBrains Mono,monospace">${rs.droneStates.length}</span>
+          <strong style="color:${color}">${rs.road.name}</strong><br/>
+          <span style="color:#4e6080">Risk R&nbsp;</span>
+          <span style="color:#0E7490;font-family:JetBrains Mono,monospace">${score.toFixed(3)}</span>
+          <span style="color:#4e6080"> &nbsp;·&nbsp; Drones&nbsp;</span>
+          <span style="color:#0E7490;font-family:JetBrains Mono,monospace">${rs.droneStates.length}</span>
         </div>`,
         { sticky: true, className: '' }
       )
@@ -201,7 +302,7 @@ export default function LiveMap({ N, policyKey, params: paramsProp }) {
     }
     force((x) => x + 1)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [N, policyKey])
+  }, [N, policyKey, heatmap])
 
   // Render drone + accident markers reactively (called every frame)
   function syncMarkers() {
@@ -214,10 +315,22 @@ export default function LiveMap({ N, policyKey, params: paramsProp }) {
       for (const d of rs.droneStates) {
         const [x, y] = positionAt(rs.path, d.s)
         const [lat, lon] = unprojectMeters(x, y, rs.path.refLat, rs.path.refLon)
+        // Compute heading: sample a point a few metres ahead along travel
+        // direction and convert the local-meters delta to a clockwise-from-
+        // north angle. Snap to 5° to avoid spamming setIcon every frame.
+        const aheadS = Math.max(0, Math.min(rs.path.totalLength, d.s + d.dir * 8))
+        const [x2, y2] = positionAt(rs.path, aheadS)
+        const dx = x2 - x
+        const dy = y2 - y
+        const headingDeg = (dx === 0 && dy === 0)
+          ? 0
+          : Math.atan2(dx, dy) * 180 / Math.PI
+        const headingSnap = Math.round(headingDeg / 5) * 5
+
         let entry = droneLayerRef.current.get(d.id)
         if (!entry) {
           const marker = L.marker([lat, lon], {
-            icon: droneIcon(rs.road.color, d.state),
+            icon: droneIcon(rs.road.color, d.state, headingSnap),
             interactive: true,
           }).addTo(map)
           marker.bindTooltip(
@@ -228,13 +341,14 @@ export default function LiveMap({ N, policyKey, params: paramsProp }) {
             </div>`,
             { className: '', direction: 'top' }
           )
-          entry = { marker, prevState: d.state, color: rs.road.color }
+          entry = { marker, prevState: d.state, prevHeading: headingSnap, color: rs.road.color }
           droneLayerRef.current.set(d.id, entry)
         } else {
           entry.marker.setLatLng([lat, lon])
-          if (entry.prevState !== d.state) {
-            entry.marker.setIcon(droneIcon(entry.color, d.state))
+          if (entry.prevState !== d.state || entry.prevHeading !== headingSnap) {
+            entry.marker.setIcon(droneIcon(entry.color, d.state, headingSnap))
             entry.prevState = d.state
+            entry.prevHeading = headingSnap
           }
           entry.marker.setTooltipContent(
             `<div style="font-family:JetBrains Mono,monospace;font-size:10px;
@@ -318,7 +432,7 @@ export default function LiveMap({ N, policyKey, params: paramsProp }) {
             d.s += d.dir * st.params.droneSpeed * dt
             if (d.s >= d.segEnd) { d.s = d.segEnd; d.dir = -1 }
             if (d.s <= d.segStart) { d.s = d.segStart; d.dir = 1 }
-            d.battery -= st.params.batteryDrainRate * dt
+            d.battery -= st.params.batteryDrainRate * d.drainFactor * dt
             if (d.battery <= st.params.lowBatteryThreshold) {
               d.state = 'returning'
               d.phaseEnd = st.simT + st.params.dockTransitTime
@@ -343,8 +457,11 @@ export default function LiveMap({ N, policyKey, params: paramsProp }) {
         const expected = rs.baseRate * dt
         if (st.rng() < expected) {
           const s = st.rng() * rs.path.totalLength
+          const seq = st.nextAccidentSeq++
+          const accId = `A${String(seq).padStart(4, '0')}`
           st.accidents.push({
-            id: Math.random().toString(36).slice(2),
+            id: accId,
+            seq,
             roadIdx: r,
             s,
             time: st.simT,
@@ -352,6 +469,15 @@ export default function LiveMap({ N, policyKey, params: paramsProp }) {
             missed: false,
           })
           st.totalGenerated++
+          st.events.push({
+            time_s: +st.simT.toFixed(1),
+            kind: 'accident',
+            accident_id: accId,
+            corridor: rs.road.name,
+            uav_id: '',
+            detection_time_s: '',
+            note: 'Accident occurred',
+          })
         }
       }
 
@@ -369,13 +495,32 @@ export default function LiveMap({ N, policyKey, params: paramsProp }) {
             acc.detected = true
             acc.detectionTime = st.simT - acc.time
             acc.detectedAt = st.simT
+            acc.responder = d.id
             st.totalDetected++
+            st.events.push({
+              time_s: +st.simT.toFixed(1),
+              kind: 'detected',
+              accident_id: acc.id,
+              corridor: rs.road.name,
+              uav_id: d.id,
+              detection_time_s: +acc.detectionTime.toFixed(1),
+              note: 'Detected by drone',
+            })
             break
           }
         }
         if (!acc.detected && st.simT - acc.time > st.params.maxDetectionWindow) {
           acc.missed = true
           st.totalMissed++
+          st.events.push({
+            time_s: +st.simT.toFixed(1),
+            kind: 'missed',
+            accident_id: acc.id,
+            corridor: rs.road.name,
+            uav_id: '',
+            detection_time_s: '',
+            note: `Timeout after ${st.params.maxDetectionWindow}s`,
+          })
         }
       }
 
@@ -428,17 +573,17 @@ export default function LiveMap({ N, policyKey, params: paramsProp }) {
   const kpis = [
     { label: 'Sim time', value: `${Math.floor(st?.simT ?? 0)}s`, hint: `×${TIME_SCALE} real-time`, dot: '#94a3b8', tint: 'rgba(148, 163, 184, 0.10)' },
     { label: 'Total',    value: totalGenerated,                  hint: 'accidents generated',     dot: '#cbd5e1', tint: 'rgba(203, 213, 225, 0.08)' },
-    { label: 'Active',   value: pending,                         hint: 'awaiting detection',      dot: '#f59e0b', tint: 'rgba(245, 158, 11, 0.10)' },
-    { label: 'Detected', value: totalDetected,                   hint: 'within window',           dot: '#34d399', tint: 'rgba(52, 211, 153, 0.10)' },
+    { label: 'Active',   value: pending,                         hint: 'awaiting detection',      dot: '#B45309', tint: 'rgba(245, 158, 11, 0.10)' },
+    { label: 'Detected', value: totalDetected,                   hint: 'within window',           dot: '#047857', tint: 'rgba(52, 211, 153, 0.10)' },
     { label: 'Missed',   value: totalMissed,                     hint: 'timeout exceeded',        dot: '#f87171', tint: 'rgba(248, 113, 113, 0.10)' },
-    { label: 'Rate',     value: detectionRate !== null ? `${detectionRate.toFixed(0)}%` : '—', hint: 'detected / resolved', dot: '#60a5fa', tint: 'rgba(96, 165, 250, 0.10)' },
+    { label: 'Rate',     value: detectionRate !== null ? `${detectionRate.toFixed(0)}%` : '—', hint: 'detected / resolved', dot: '#1D4ED8', tint: 'rgba(96, 165, 250, 0.10)' },
   ]
 
   return (
-    <div className="rounded-2xl border border-slate-800/80 bg-slate-950/40 backdrop-blur-sm overflow-hidden shadow-[0_1px_0_rgba(255,255,255,0.03)_inset]">
+    <div className="rounded-2xl border border-slate-600/80 bg-slate-700/40 backdrop-blur-sm overflow-hidden shadow-[0_1px_0_rgba(255,255,255,0.03)_inset]">
 
       {/* Title strip + actions */}
-      <div className="px-5 py-3 border-b border-slate-800/70 flex items-center gap-3 flex-wrap">
+      <div className="px-5 py-3 border-b border-slate-600/70 flex items-center gap-3 flex-wrap">
         <div className="flex items-center gap-2.5">
           <span className="w-1.5 h-1.5 rounded-full" style={{ background: policyColor }} />
           <span className="text-[12px] font-semibold text-slate-100 tracking-tight">Live trial</span>
@@ -451,17 +596,28 @@ export default function LiveMap({ N, policyKey, params: paramsProp }) {
         </div>
         <div className="ml-auto flex items-center gap-1.5">
           <button
+            onClick={() => setHeatmap((h) => !h)}
+            className={`px-3 py-1.5 text-[10.5px] font-semibold rounded-md cursor-pointer ring-1 transition-colors ${
+              heatmap
+                ? 'bg-orange-500/15 text-orange-800 hover:bg-orange-500/25 ring-orange-500/40'
+                : 'bg-slate-700/50 text-slate-400 hover:text-slate-200 ring-slate-700/50'
+            }`}
+            title="Color roads by risk score (green → red)"
+          >
+            🌡 Heatmap {heatmap ? 'ON' : 'OFF'}
+          </button>
+          <button
             onClick={() => setRunning((r) => !r)}
             className={`px-3.5 py-1.5 text-[10.5px] font-semibold rounded-md transition-colors cursor-pointer
               ${running
-                ? 'bg-amber-500/15 text-amber-300 hover:bg-amber-500/25 ring-1 ring-amber-500/30'
-                : 'bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25 ring-1 ring-emerald-500/30'}`}
+                ? 'bg-amber-500/15 text-amber-700 hover:bg-amber-500/25 ring-1 ring-amber-700/30'
+                : 'bg-emerald-500/15 text-emerald-800 hover:bg-emerald-500/25 ring-1 ring-emerald-500/30'}`}
           >
             {running ? '❚❚ Pause' : '▶ Play'}
           </button>
           <button
             onClick={() => { setRunning(false); init(); force((x) => x + 1) }}
-            className="px-3.5 py-1.5 text-[10.5px] font-semibold rounded-md text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 ring-1 ring-slate-700/50 cursor-pointer"
+            className="px-3.5 py-1.5 text-[10.5px] font-semibold rounded-md text-slate-400 hover:text-slate-200 hover:bg-slate-700/50 ring-1 ring-slate-700/50 cursor-pointer"
           >
             ↻ Reset
           </button>
@@ -469,11 +625,11 @@ export default function LiveMap({ N, policyKey, params: paramsProp }) {
       </div>
 
       {/* KPI cards */}
-      <div className="grid grid-cols-3 md:grid-cols-6 gap-2 px-5 py-3 border-b border-slate-800/70">
+      <div className="grid grid-cols-3 md:grid-cols-6 gap-2 px-5 py-3 border-b border-slate-600/70">
         {kpis.map((k) => (
           <div
             key={k.label}
-            className="rounded-lg ring-1 ring-slate-800/70 px-3 py-2 transition-colors hover:ring-slate-700"
+            className="rounded-lg ring-1 ring-slate-600/70 px-3 py-2 transition-colors hover:ring-slate-700"
             style={{ background: k.tint }}
           >
             <div className="flex items-center gap-1.5 text-[8.5px] uppercase tracking-[0.14em] font-semibold text-slate-400">
@@ -489,7 +645,7 @@ export default function LiveMap({ N, policyKey, params: paramsProp }) {
       </div>
 
       {/* Legend */}
-      <div className="flex items-center gap-5 px-5 py-2 border-b border-slate-800/70 text-[10.5px] flex-wrap">
+      <div className="flex items-center gap-5 px-5 py-2 border-b border-slate-600/70 text-[10.5px] flex-wrap">
         <span className="text-[8.5px] text-slate-500 uppercase tracking-[0.16em] font-semibold">Legend</span>
         <span className="flex items-center gap-1.5 text-slate-300">
           <svg width="16" height="16" viewBox="0 0 34 34">
@@ -518,6 +674,109 @@ export default function LiveMap({ N, policyKey, params: paramsProp }) {
       </div>
 
       <div ref={mapElRef} style={{ height: 460 }} className="w-full" />
+
+      {/* ── Event log + export ── */}
+      <EventLogPanel st={st} policyKey={policyKey} N={N} />
+    </div>
+  )
+}
+
+function EventLogPanel({ st, policyKey, N }) {
+  const events = st?.events ?? []
+  const summary = events.reduce(
+    (acc, e) => {
+      acc[e.kind] = (acc[e.kind] ?? 0) + 1
+      return acc
+    },
+    { accident: 0, detected: 0, missed: 0 }
+  )
+  // Show most-recent first, cap displayed rows.
+  const view = events.slice(-150).slice().reverse()
+
+  function exportSummary() {
+    if (!st) return
+    const summaryDoc = {
+      policy: policyKey,
+      fleet_size: N,
+      sim_time_s: +(st.simT ?? 0).toFixed(1),
+      total_generated: st.totalGenerated,
+      total_detected: st.totalDetected,
+      total_missed: st.totalMissed,
+      detection_rate: st.totalDetected + st.totalMissed > 0
+        ? +(st.totalDetected / (st.totalDetected + st.totalMissed)).toFixed(3)
+        : null,
+      params: st.params,
+    }
+    const stem = `live-trial_summary_${policyKey}_N${N}_t${Math.floor(st.simT)}s`
+    downloadBlob(JSON.stringify(summaryDoc, null, 2), `${stem}.json`, 'application/json')
+  }
+
+  const kindStyle = {
+    accident: { color: '#f87171', label: 'ACCIDENT' },
+    detected: { color: '#047857', label: 'DETECTED' },
+    missed:   { color: '#94a3b8', label: 'MISSED' },
+  }
+
+  return (
+    <div className="border-t border-slate-600/70">
+      <div className="px-5 py-3 flex items-center gap-3 flex-wrap border-b border-slate-600/70">
+        <div className="flex items-center gap-2.5">
+          <span className="w-1.5 h-1.5 rounded-full bg-cyan-800" />
+          <span className="text-[12px] font-semibold text-slate-100 tracking-tight">Event log</span>
+          <span className="text-slate-600 text-[10px]">/</span>
+          <span className="text-[10.5px] font-mono text-slate-400">
+            {events.length} events
+          </span>
+        </div>
+        <div className="flex items-center gap-3 text-[10px] text-slate-400">
+          <span><span className="text-rose-700">●</span> {summary.accident} acc</span>
+          <span><span className="text-emerald-800">●</span> {summary.detected} det</span>
+          <span><span className="text-slate-400">●</span> {summary.missed} miss</span>
+        </div>
+        <div className="ml-auto flex items-center gap-1.5">
+          <button onClick={exportSummary}
+            className="px-2.5 py-1 text-[10px] font-semibold rounded-md text-slate-300 hover:text-slate-100 hover:bg-slate-700/50 ring-1 ring-slate-700/50 cursor-pointer">
+            ⬇ Export summary (JSON)
+          </button>
+        </div>
+      </div>
+      <div className="max-h-[260px] overflow-y-auto bg-slate-700/50/50">
+        {view.length === 0 ? (
+          <div className="px-5 py-6 text-center text-[10.5px] text-slate-500">
+            No events yet — press Play to start the simulation.
+          </div>
+        ) : (
+          <table className="w-full text-[10.5px] font-mono">
+            <thead className="bg-slate-700/40/70 sticky top-0">
+              <tr className="text-[9px] uppercase tracking-[0.12em] text-slate-500">
+                <th className="text-left py-1.5 px-3 font-semibold">t (s)</th>
+                <th className="text-left py-1.5 px-3 font-semibold">Kind</th>
+                <th className="text-left py-1.5 px-3 font-semibold">ID</th>
+                <th className="text-left py-1.5 px-3 font-semibold">Corridor</th>
+                <th className="text-left py-1.5 px-3 font-semibold">UAV</th>
+                <th className="text-right py-1.5 px-3 font-semibold">Δt det (s)</th>
+                <th className="text-left py-1.5 px-3 font-semibold">Note</th>
+              </tr>
+            </thead>
+            <tbody>
+              {view.map((e, i) => {
+                const ks = kindStyle[e.kind] ?? { color: '#94a3b8', label: e.kind.toUpperCase() }
+                return (
+                  <tr key={`${e.accident_id}-${e.kind}-${i}`} className="border-t border-slate-600/50 hover:bg-slate-700/40">
+                    <td className="py-1 px-3 text-slate-400 tabular-nums">{e.time_s}</td>
+                    <td className="py-1 px-3 font-semibold" style={{ color: ks.color }}>{ks.label}</td>
+                    <td className="py-1 px-3 text-slate-300">{e.accident_id}</td>
+                    <td className="py-1 px-3 text-slate-300">{e.corridor}</td>
+                    <td className="py-1 px-3 text-slate-400">{e.uav_id || '—'}</td>
+                    <td className="py-1 px-3 text-right text-slate-300 tabular-nums">{e.detection_time_s === '' ? '—' : e.detection_time_s}</td>
+                    <td className="py-1 px-3 text-slate-500">{e.note}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
     </div>
   )
 }

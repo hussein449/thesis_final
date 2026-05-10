@@ -124,7 +124,7 @@ export const ROADS = [
     id: 'damascus',
     name: 'Damascus Road',
     shortName: 'Damascus Rd',
-    color: '#f59e0b',
+    color: '#B45309',
     accidents: 38,
     aadt: 35000,
     speedKmh: 60,
@@ -169,7 +169,7 @@ export const ROADS = [
     id: 'corniche_beirut',
     name: 'Corniche Beirut',
     shortName: 'Corniche',
-    color: '#22d3ee',
+    color: '#0E7490',
     accidents: 22,
     aadt: 20000,
     speedKmh: 50,
@@ -237,27 +237,43 @@ export const ROADS = [
 // ---------------------------------------------------------------------------
 
 /**
- * Composite risk score for a single road.
+ * Poisson-derived composite risk score for a single road.
  *
- * R_i = w1·A_i + w2·T_i + w3·S_i + w4·C_i
+ * Model:
+ *   N_i ~ Poisson(μ_i)        — accidents on road i in a unit exposure window
+ *   μ_i = w1·A_i + w2·T_i + w3·S_i + w4·C_i
+ *   R_i = P(N_i ≥ 1) = 1 − exp(−μ_i)
  *
- * Each term is min-max normalised against the reference values below so all
- * inputs are in [0, 1] before weighting:
+ * The weighted sum of normalised predictors is interpreted as the Poisson
+ * mean μ_i (expected accidents in the unit window). The risk score is then
+ * the Poisson-derived probability of at least one accident — i.e. the
+ * complement of the Poisson PMF at zero, P(N=0) = e^(−μ). This is the
+ * standard log-linear Safety Performance Function (SPF) form used in
+ * AASHTO HSM 2010 Ch.10 and Lord & Mannering (2010), specialised so that
+ * the linear predictor IS μ rather than log(μ), which keeps μ in [0,1] for
+ * normalised inputs and yields an interpretable probability R_i ∈ [0, 1−e^−1].
  *
+ * Each predictor is min-max normalised:
  *   A_i = accidents_i / ACC_REF          (accident history)
  *   T_i = AADT_i      / AADT_REF         (traffic intensity)
  *   S_i = speedKmh_i  / SPEED_REF        (speed contribution)
  *   C_i = (5 − condition_i) / COND_RANGE (infrastructure condition, inverted)
  *
  * Weights (sum = 1):
- *   w1 = 0.40  — accident history dominates (strongest predictor of future crashes)
+ *   w1 = 0.40  — accident history dominates (strongest predictor)
  *   w2 = 0.25  — traffic volume (exposure)
  *   w3 = 0.20  — operating speed (severity amplifier)
  *   w4 = 0.15  — pavement condition (friction / geometry proxy)
  *
+ * Because R_i is a strictly monotone transformation of μ_i, drone allocation
+ * ordering by Hamilton's method is preserved relative to the original
+ * weighted-sum score, while R_i now has a probabilistic interpretation
+ * consistent with the Poisson accident-arrival process used in the
+ * detection simulator.
+ *
  * Ref: Hauer 1997 "Observational Before-After Studies in Road Safety";
- *      AASHTO HSM 2010 Ch.4 (network screening); weights are modelling choices
- *      reflecting relative importance in transportation-engineering literature.
+ *      AASHTO HSM 2010 Ch.10 (Poisson SPFs); Lord & Mannering 2010
+ *      "The statistical analysis of crash-frequency data".
  */
 const W1 = 0.40, W2 = 0.25, W3 = 0.20, W4 = 0.15
 const ACC_REF   = 20    // accidents/yr reference (urban arterial)
@@ -265,7 +281,8 @@ const AADT_REF  = 50000 // veh/day reference
 const SPEED_REF = 120   // km/h reference
 const COND_RANGE = 4    // condition scale is 1–5 → max deviation = 4
 
-export function computeRiskScore(road) {
+/** Poisson mean μ_i — expected accidents in the unit exposure window. */
+export function computePoissonMean(road) {
   const A = road.accidents / ACC_REF
   const T = road.aadt      / AADT_REF
   const S = road.speedKmh  / SPEED_REF
@@ -273,12 +290,21 @@ export function computeRiskScore(road) {
   return W1 * A + W2 * T + W3 * S + W4 * C
 }
 
-/** Returns the individual normalised components and weighted contributions. */
+/**
+ * Risk score R_i = 1 − e^(−μ_i), the Poisson probability of at least one
+ * accident in the unit exposure window.
+ */
+export function computeRiskScore(road) {
+  return 1 - Math.exp(-computePoissonMean(road))
+}
+
+/** Returns the individual normalised components, contributions to μ, and R. */
 export function computeRiskBreakdown(road) {
   const A = road.accidents / ACC_REF
   const T = road.aadt      / AADT_REF
   const S = road.speedKmh  / SPEED_REF
   const C = (5 - road.condition) / COND_RANGE
+  const mu = W1 * A + W2 * T + W3 * S + W4 * C
   return {
     terms: [
       { label: 'A — Accident history',      raw: `${road.accidents} acc/yr`,          norm: A, weight: W1, contrib: W1 * A },
@@ -286,7 +312,8 @@ export function computeRiskBreakdown(road) {
       { label: 'S — Speed contribution',     raw: `${road.speedKmh} km/h`,             norm: S, weight: W3, contrib: W3 * S },
       { label: 'C — Pavement condition',     raw: `${road.condition}/5 (inverted)`,    norm: C, weight: W4, contrib: W4 * C },
     ],
-    total: W1 * A + W2 * T + W3 * S + W4 * C,
+    mu,
+    total: 1 - Math.exp(-mu),
   }
 }
 

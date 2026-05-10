@@ -61,7 +61,7 @@ export function createSimulation() {
   function addLog(msg, cls) {
     logCounter++;
     logs.unshift({ id: logCounter, msg, cls, ts: Math.floor(simMs) });
-    if (logs.length > 40) logs.length = 40;
+    if (logs.length > 200) logs.length = 200;
   }
 
   function addArrow(fx, fy, tx, ty, color, label, dur) {
@@ -72,6 +72,33 @@ export function createSimulation() {
     const dist = distM(d);
     if (d.battery < config.minBat || d.range < 3) return -1;
     return Math.max(0, 1 - dist / 500) * 50 + (d.battery / 100) * 30 + (d.range / 15) * 20;
+  }
+
+  /**
+   * Detailed bid breakdown — same components as `calcBid`, exposed so the
+   * communication log can show *why* each drone bid the value it did.
+   *   total = 0.50·proximity + 0.30·battery + 0.20·range  (each scaled out of its weight)
+   */
+  function bidBreakdown(d) {
+    const dist = distM(d);
+    const proximity = Math.max(0, 1 - dist / 500) * 50;     // closer is better
+    const batteryC  = (d.battery / 100) * 30;
+    const rangeC    = (d.range   / 15)  * 20;
+    const eligible  = !(d.battery < config.minBat || d.range < 3);
+    const reason = !eligible
+      ? (d.battery < config.minBat
+          ? `bat ${d.battery.toFixed(0)}% < min ${config.minBat}%`
+          : `range ${d.range} < 3`)
+      : null;
+    return {
+      dist: dist.toFixed(0),
+      proximity: proximity.toFixed(1),
+      batteryC: batteryC.toFixed(1),
+      rangeC: rangeC.toFixed(1),
+      total: (proximity + batteryC + rangeC).toFixed(1),
+      eligible,
+      reason,
+    };
   }
 
   /* Build */
@@ -87,6 +114,9 @@ export function createSimulation() {
         rotOff: Math.random() * Math.PI * 2, id: i + 1,
         battery: 45 + Math.floor(Math.random() * 50),
         range: 3 + Math.floor(Math.random() * 10),
+        // Per-drone drain factor (±15%) so charge cycles desynchronise
+        // — matches the per-drone drain model used in the Live trial.
+        drainFactor: 0.85 + Math.random() * 0.30,
         flyProgress: 0, flyStartX: 0, flyStartY: 0, bid: 0, swapPending: false,
         returnDockX: DOCKS[0].x, returnDockY: DOCKS[0].y,
       });
@@ -131,7 +161,7 @@ export function createSimulation() {
     d.flyStartY = d.y;
     d.flyProgress = 0;
     addLog(`[${Math.floor(simMs)}ms] D${d.id} → returning to patrol`, 'cl-ack');
-    addArrow(d.x, d.y, d.x, d.laneY, '#22d3ee', 'RTN', 400);
+    addArrow(d.x, d.y, d.x, d.laneY, '#0E7490', 'RTN', 400);
   }
 
   /* Swap logic — dispatches the reserve with the MOST battery that still
@@ -184,9 +214,42 @@ export function createSimulation() {
   function startEvaluation(ackIdx) {
     const sx = activeSensor().x, sy = activeSensor().y;
     addLog(`[${Math.floor(simMs)}ms] Evaluating fleet (sev=${severity}, minPatrol=${MIN_PATROL})`, 'cl-eval');
-    for (let i = 0; i < drones.length; i++) drones[i].bid = calcBid(drones[i]);
-    const maxDeploy = Math.max(0, drones.length - MIN_PATROL);
-    addLog(`[${Math.floor(simMs)}ms] ${drones.length} drones, maxDeploy=${maxDeploy}`, 'cl-eval');
+    addLog(`[${Math.floor(simMs)}ms]   bid = 50·proximity + 30·(bat/100) + 20·(range/15)`, 'cl-eval');
+
+    // Compute every drone's bid AND log its full breakdown so the operator
+    // can see why each drone bid what it did. Order by total bid descending
+    // so the strongest candidates appear first.
+    const breakdowns = []
+    for (let i = 0; i < drones.length; i++) {
+      drones[i].bid = calcBid(drones[i]);
+      breakdowns.push({ idx: i, bd: bidBreakdown(drones[i]) });
+    }
+    const sortedForLog = breakdowns.slice().sort((a, b) => parseFloat(b.bd.total) - parseFloat(a.bd.total));
+    for (const { idx, bd } of sortedForLog) {
+      const d = drones[idx];
+      if (bd.eligible) {
+        addLog(
+          `[${Math.floor(simMs)}ms]   D${d.id}: bid=${bd.total} ` +
+          `(prox ${bd.proximity}@${bd.dist}px · bat ${bd.batteryC}@${d.battery.toFixed(0)}% · range ${bd.rangeC}@${d.range})`,
+          'cl-bid'
+        );
+      } else {
+        addLog(
+          `[${Math.floor(simMs)}ms]   D${d.id}: ineligible — ${bd.reason}`,
+          'cl-info'
+        );
+      }
+    }
+
+    // Severity dictates how many drones we *intend* to deploy:
+    //   sev 0 (moderate) → 1 (PRIMARY only)
+    //   sev 1 (critical) → 2 (PRIMARY + BACKUP)
+    // The fleet-minus-MIN_PATROL term is just a capacity ceiling — it can
+    // only ever *reduce* the deployment, never inflate it past what
+    // severity actually calls for.
+    const requiredDeploy = severity === 0 ? 1 : 2;
+    const capacity = Math.max(0, drones.length - MIN_PATROL);
+    const maxDeploy = Math.min(requiredDeploy, capacity);
 
     if (maxDeploy < 1) {
       addLog(`[${Math.floor(simMs)}ms] Cannot deploy — patrol minimum!`, 'cl-sos');
@@ -205,27 +268,43 @@ export function createSimulation() {
       } else {
         drones[ackIdx].state = 'idle';
         addLog(`[${Math.floor(simMs)}ms] D${ackD.id} below threshold → forwarding CFP`, 'cl-cnp');
-        addArrow(ackD.x, ackD.y, sx, sy, '#f59e0b', 'CFP', 400);
+        addArrow(ackD.x, ackD.y, sx, sy, '#B45309', 'CFP', 400);
         setTimeout(() => runCNPSingle(ackIdx), 800);
       }
     } else {
       addLog(`[${Math.floor(simMs)}ms] Sev=1: CNP dual response`, 'cl-cnp');
       addLog(`[${Math.floor(simMs)}ms] D${drones[ackIdx].id} sending CFP...`, 'cl-cnp');
       for (let ci = 0; ci < drones.length; ci++) {
-        if (ci !== ackIdx) addArrow(drones[ackIdx].x, drones[ackIdx].y, drones[ci].x, drones[ci].y, '#f59e0b', 'CFP', 400);
+        if (ci !== ackIdx) addArrow(drones[ackIdx].x, drones[ackIdx].y, drones[ci].x, drones[ci].y, '#B45309', 'CFP', 400);
       }
       setTimeout(() => runCNPDual(ackIdx, maxDeploy), 1200);
     }
   }
 
   function runCNPSingle(ackIdx) {
-    let bestIdx = -1, bestBid = -1;
-    for (let i = 0; i < drones.length; i++) { if (drones[i].bid > bestBid) { bestBid = drones[i].bid; bestIdx = i; } }
-    if (bestIdx >= 0) {
-      primaryIdx = bestIdx;
-      addLog(`[${Math.floor(simMs)}ms] Best: D${drones[bestIdx].id} (bid=${bestBid.toFixed(1)})`, 'cl-deploy');
+    // Sorted ranking of all eligible bids — winner first.
+    const ranking = [];
+    for (let i = 0; i < drones.length; i++) {
+      if (drones[i].bid > 0) ranking.push({ idx: i, bid: drones[i].bid });
+    }
+    ranking.sort((a, b) => b.bid - a.bid);
+
+    addLog(`[${Math.floor(simMs)}ms] Bid ranking (${ranking.length} candidates):`, 'cl-eval');
+    ranking.forEach((r, rank) => {
+      addLog(
+        `[${Math.floor(simMs)}ms]   #${rank + 1} D${drones[r.idx].id} = ${r.bid.toFixed(1)}`,
+        rank === 0 ? 'cl-deploy' : 'cl-bid'
+      );
+    });
+
+    if (ranking.length > 0) {
+      primaryIdx = ranking[0].idx;
+      addLog(
+        `[${Math.floor(simMs)}ms] WINNER: D${drones[primaryIdx].id} (highest bid ${ranking[0].bid.toFixed(1)})`,
+        'cl-deploy'
+      );
       for (let bi = 0; bi < drones.length; bi++) {
-        if (drones[bi].bid > 0) addArrow(drones[bi].x, drones[bi].y, drones[ackIdx].x, drones[ackIdx].y, '#22d3ee', `BID:${drones[bi].bid.toFixed(0)}`, 500);
+        if (drones[bi].bid > 0) addArrow(drones[bi].x, drones[bi].y, drones[ackIdx].x, drones[ackIdx].y, '#0E7490', `BID:${drones[bi].bid.toFixed(0)}`, 500);
       }
       setTimeout(() => { addArrow(drones[ackIdx].x, drones[ackIdx].y, drones[primaryIdx].x, drones[primaryIdx].y, '#a855f7', 'ACCEPT', 400); setTimeout(() => deployDrones(ackIdx), 600); }, 700);
     } else {
@@ -236,24 +315,42 @@ export function createSimulation() {
   }
 
   function runCNPDual(ackIdx, maxDeploy) {
+    // Visualise + log every incoming bid (including the ACK drone's own).
+    addLog(`[${Math.floor(simMs)}ms] Receiving bids:`, 'cl-cnp');
     for (let bi = 0; bi < drones.length; bi++) {
-      if (bi !== ackIdx && drones[bi].bid > 0) {
-        addArrow(drones[bi].x, drones[bi].y, drones[ackIdx].x, drones[ackIdx].y, '#22d3ee', `BID:${drones[bi].bid.toFixed(0)}`, 500);
-        addLog(`[${Math.floor(simMs)}ms] D${drones[bi].id} bid=${drones[bi].bid.toFixed(1)}`, 'cl-bid');
+      if (drones[bi].bid > 0) {
+        if (bi !== ackIdx) {
+          addArrow(drones[bi].x, drones[bi].y, drones[ackIdx].x, drones[ackIdx].y, '#0E7490', `BID:${drones[bi].bid.toFixed(0)}`, 500);
+        }
+        addLog(`[${Math.floor(simMs)}ms]   D${drones[bi].id} → ${drones[bi].bid.toFixed(1)}`, 'cl-bid');
       }
     }
     setTimeout(() => {
-      addLog(`[${Math.floor(simMs)}ms] Evaluating bids...`, 'cl-eval');
       const el = [];
       for (let i = 0; i < drones.length; i++) { if (drones[i].bid > 0) el.push({ idx: i, bid: drones[i].bid }); }
       el.sort((a, b) => b.bid - a.bid);
 
+      addLog(`[${Math.floor(simMs)}ms] Sorted bids (highest first):`, 'cl-eval');
+      el.forEach((r, rank) => {
+        addLog(
+          `[${Math.floor(simMs)}ms]   #${rank + 1} D${drones[r.idx].id} = ${r.bid.toFixed(1)}`,
+          'cl-bid'
+        );
+      });
+      addLog(
+        `[${Math.floor(simMs)}ms] Decision: top-1 = PRIMARY, top-2 = BACKUP, others = REJECT`,
+        'cl-eval'
+      );
+
       if (el.length >= 2 && maxDeploy >= 2) {
         primaryIdx = el[0].idx; backupIdx = el[1].idx;
-        addLog(`[${Math.floor(simMs)}ms] PRIMARY: D${drones[primaryIdx].id} (bid=${el[0].bid.toFixed(1)})`, 'cl-deploy');
-        addLog(`[${Math.floor(simMs)}ms] BACKUP: D${drones[backupIdx].id} (bid=${el[1].bid.toFixed(1)})`, 'cl-deploy');
+        addLog(`[${Math.floor(simMs)}ms] PRIMARY: D${drones[primaryIdx].id} (bid=${el[0].bid.toFixed(1)}) ← winner`, 'cl-deploy');
+        addLog(`[${Math.floor(simMs)}ms] BACKUP:  D${drones[backupIdx].id} (bid=${el[1].bid.toFixed(1)}) ← 2nd place`, 'cl-deploy');
+        for (let ri = 2; ri < el.length; ri++) {
+          addLog(`[${Math.floor(simMs)}ms]   REJECT D${drones[el[ri].idx].id} (bid=${el[ri].bid.toFixed(1)}) — outranked`, 'cl-info');
+        }
         addArrow(drones[ackIdx].x, drones[ackIdx].y, drones[primaryIdx].x, drones[primaryIdx].y, '#a855f7', 'ACCEPT', 400);
-        addArrow(drones[ackIdx].x, drones[ackIdx].y, drones[backupIdx].x, drones[backupIdx].y, '#f59e0b', 'ACCEPT', 400);
+        addArrow(drones[ackIdx].x, drones[ackIdx].y, drones[backupIdx].x, drones[backupIdx].y, '#B45309', 'ACCEPT', 400);
         for (let ri = 0; ri < el.length; ri++) {
           if (el[ri].idx !== primaryIdx && el[ri].idx !== backupIdx)
             addArrow(drones[ackIdx].x, drones[ackIdx].y, drones[el[ri].idx].x, drones[el[ri].idx].y, '#ef4444', 'REJECT', 300);
@@ -288,7 +385,7 @@ export function createSimulation() {
     simMs += dt * 1000;
     sensorPulse = (sensorPulse + dt * 0.8) % 1;
     const dSpdPx = config.droneSpeed * PPM * dt;
-    const batDrain = config.batDrain * dt;
+    const baseBatDrain = config.batDrain * dt;
 
     /* Move idle + drain battery */
     for (const d of drones) {
@@ -296,7 +393,7 @@ export function createSimulation() {
         d.x += d.dir * dSpdPx;
         if (d.x > RX2 - 15) { d.x = RX2 - 15; d.dir = -1; }
         if (d.x < RX1 + 15) { d.x = RX1 + 15; d.dir = 1; }
-        d.battery = Math.max(0, d.battery - batDrain);
+        d.battery = Math.max(0, d.battery - baseBatDrain * (d.drainFactor ?? 1));
         if (d.battery <= config.lowBat && !d.swapPending) triggerSwap(drones.indexOf(d));
       }
 

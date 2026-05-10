@@ -99,9 +99,9 @@ export default function PartitionMap({ allocations, selectedRoadId, onSelectRoad
           padding:5px 10px;border-radius:7px;white-space:nowrap">
           <strong style="color:${color}">${road.name}</strong><br/>
           <span style="color:#4e6080">Risk R&nbsp;</span>
-          <span style="color:#22d3ee;font-family:JetBrains Mono,monospace">${score.toFixed(3)}</span>
+          <span style="color:#0E7490;font-family:JetBrains Mono,monospace">${score.toFixed(3)}</span>
           <span style="color:#4e6080"> &nbsp;·&nbsp; Drones&nbsp;</span>
-          <span style="color:#22d3ee;font-family:JetBrains Mono,monospace">${drones}</span>
+          <span style="color:#0E7490;font-family:JetBrains Mono,monospace">${drones}</span>
         </div>`,
         { sticky: true, className: '' }
       )

@@ -69,7 +69,7 @@ function buildCDFData() {
 function CustomTooltip({ active, payload, label, xLabel, xUnit = '', yUnit = '%' }) {
   if (!active || !payload?.length) return null
   return (
-    <div className="bg-[#111827] border border-[var(--color-border)] rounded-lg px-3 py-2 shadow-xl">
+    <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-lg px-3 py-2 shadow-xl">
       <div className="text-[10px] text-[var(--color-txt2)] mb-1">
         {xLabel}: {label}{xUnit}
       </div>
@@ -96,7 +96,7 @@ export default function DetectionCDFPlots({ results }) {
   return (
     <div className="space-y-4">
       {/* ── CDF curve: P(Td < τ) vs τ at fixed N ─────────── */}
-      <div className="rounded-xl border border-[var(--color-border)] bg-[#0d1225] p-4">
+      <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-card)] p-4">
         <div className="mb-2">
           <div className="text-[10px] text-[var(--color-txt2)] uppercase tracking-widest font-semibold">
             P(T<sub>d</sub> &lt; τ) — empirical CDF of detection time
@@ -111,7 +111,7 @@ export default function DetectionCDFPlots({ results }) {
         </div>
 
         <ResponsiveContainer width="100%" height={260}>
-          <AreaChart data={cdfData} margin={{ top: 10, right: 20, left: 0, bottom: 20 }}>
+          <AreaChart data={cdfData} margin={{ top: 10, right: 20, left: 0, bottom: 36 }}>
             <defs>
               <linearGradient id="gradUniform" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%" stopColor={POLICIES.uniform.color} stopOpacity={0.18} />
@@ -150,13 +150,13 @@ export default function DetectionCDFPlots({ results }) {
               }}
             />
             <Tooltip content={<CustomTooltip xLabel="τ" xUnit="s" />} />
-            <Legend wrapperStyle={{ fontSize: 10, color: textColor, paddingTop: 4 }} />
+            <Legend verticalAlign="top" align="right" iconSize={9} wrapperStyle={{ fontSize: 10, color: textColor, paddingBottom: 6 }} />
             <ReferenceLine
               x={120}
-              stroke="#fbbf24"
+              stroke="#B45309"
               strokeDasharray="5 3"
               strokeWidth={1.5}
-              label={{ value: '2 min', position: 'top', fill: '#fbbf24', fontSize: 9 }}
+              label={{ value: '2 min', position: 'top', fill: '#B45309', fontSize: 9 }}
             />
             <Area
               type="monotone"
@@ -183,12 +183,12 @@ export default function DetectionCDFPlots({ results }) {
       </div>
 
       {/* ── P(Td < 2 min) vs N from sweep (if available) ── */}
-      <div className="rounded-xl border border-[var(--color-border)] bg-[#0d1225] p-4">
+      <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-card)] p-4">
         <div className="mb-2">
           <div className="text-[10px] text-[var(--color-txt2)] uppercase tracking-widest font-semibold">
             P(T<sub>d</sub> &lt; 2 min) vs fleet size N
             {!hasSweepResults && (
-              <span className="ml-2 text-amber-400/70 normal-case tracking-normal font-normal">
+              <span className="ml-2 text-amber-700/70 normal-case tracking-normal font-normal">
                 — run a sweep on Step 1 to populate this chart
               </span>
             )}
@@ -201,7 +201,7 @@ export default function DetectionCDFPlots({ results }) {
 
         {hasSweepResults ? (
           <ResponsiveContainer width="100%" height={230}>
-            <LineChart data={pUnder2MinData} margin={{ top: 10, right: 20, left: 0, bottom: 20 }}>
+            <LineChart data={pUnder2MinData} margin={{ top: 10, right: 20, left: 0, bottom: 36 }}>
               <CartesianGrid stroke={grid} strokeDasharray="3 3" />
               <XAxis
                 dataKey="N"
@@ -229,7 +229,7 @@ export default function DetectionCDFPlots({ results }) {
                 }}
               />
               <Tooltip content={<CustomTooltip xLabel="N" xUnit=" drones" />} />
-              <Legend wrapperStyle={{ fontSize: 10, color: textColor, paddingTop: 4 }} />
+              <Legend verticalAlign="top" align="right" iconSize={9} wrapperStyle={{ fontSize: 10, color: textColor, paddingBottom: 6 }} />
               <ReferenceLine
                 y={80}
                 stroke="#6366f1"
@@ -258,7 +258,7 @@ export default function DetectionCDFPlots({ results }) {
         )}
       </div>
 
-      <div className="rounded-xl border border-[var(--color-border)] bg-[#0d1225] px-5 py-3">
+      <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-card)] px-5 py-3">
         <div className="text-[9.5px] text-[var(--color-txt3)] leading-relaxed">
           <span className="text-[var(--color-txt2)] font-semibold">Interpretation: </span>
           The CDF chart (top) shows the full distribution — a curve rising steeply and early indicates

@@ -3,7 +3,7 @@ export default function SOSPanel({ state }) {
   if (simState === 'idle') return null
 
   const isCritical = sosFrame.severity === 1
-  const sevColor = isCritical ? '#ef4444' : '#f59e0b'
+  const sevColor = isCritical ? '#ef4444' : '#B45309'
 
   const fields = [
     { label: 'Sensor ID',  value: `S-${String(sosFrame.sensorId).padStart(3, '0')}`, color: 'var(--color-accent)' },
@@ -22,7 +22,7 @@ export default function SOSPanel({ state }) {
       {/* Header */}
       <div
         className="flex items-center gap-2 px-3.5 py-[7px] border-b shrink-0"
-        style={{ background: isCritical ? '#0c0305' : '#0a0802', borderBottomColor: sevColor + '28' }}
+        style={{ background: 'var(--color-card)', borderBottomColor: sevColor + '40' }}
       >
         <div
           className="w-[7px] h-[7px] rounded-full shrink-0"
@@ -47,7 +47,7 @@ export default function SOSPanel({ state }) {
       {/* Data grid */}
       <div
         className="px-3.5 py-2.5 grid grid-cols-2 gap-x-4 gap-y-2.5"
-        style={{ background: isCritical ? '#070203' : '#060604' }}
+        style={{ background: 'var(--color-card)' }}
       >
         {fields.map(f => (
           <div key={f.label}>

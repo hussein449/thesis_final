@@ -100,7 +100,7 @@ export const POLICIES = {
   uniform: {
     key: 'uniform',
     label: 'Uniform',
-    color: '#22d3ee',
+    color: '#1D4ED8',
     description:
       'Equal drones per road; leftover drones go to the longest roads first.',
     allocate: allocateUniform,

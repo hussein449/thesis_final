@@ -30,7 +30,7 @@ export default function CommLog({ logs, count }) {
       </div>
 
       {/* Log entries */}
-      <div className="flex-1 min-h-0 overflow-y-auto px-3.5 py-2.5 bg-[#02050e] font-[var(--font-mono)] text-[12px] leading-[1.7] log-scroll">
+      <div className="flex-1 min-h-0 overflow-y-auto px-3.5 py-2.5 bg-[var(--color-bg)] font-[var(--font-mono)] text-[12px] leading-[1.7] log-scroll">
         {logs.length === 0 ? (
           <div className="text-[var(--color-txt3)] pt-1">
             [SYS] All drones patrolling. Trigger an accident to begin.

@@ -21,7 +21,7 @@ const text = '#64748b'
 
 function ChartCard({ title, subtitle, children }) {
   return (
-    <div className="rounded-xl border border-[var(--color-border)] bg-[#0d1225] p-4">
+    <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-card)] p-4">
       <div className="mb-3">
         <div className="text-[10px] text-[var(--color-txt2)] uppercase tracking-widest font-semibold">
           {title}
@@ -38,7 +38,7 @@ function ChartCard({ title, subtitle, children }) {
 function CustomTooltip({ active, payload, label, xLabel = 't (s)', decimals = 1, unit = '' }) {
   if (!active || !payload?.length) return null
   return (
-    <div className="bg-[#111827] border border-[var(--color-border)] rounded-lg px-3 py-2 shadow-xl">
+    <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-lg px-3 py-2 shadow-xl">
       <div className="text-[10px] text-[var(--color-txt2)] mb-1">{xLabel}: {label}</div>
       {payload.map((p, i) => (
         <div key={i} className="flex items-center gap-2 text-[11px]">
@@ -128,7 +128,7 @@ function BatteryEvolutionChart() {
             className={`px-2 py-0.5 text-[10px] font-bold rounded border transition-colors cursor-pointer
               ${n === fleetN
                 ? 'bg-[var(--color-accent)]/20 border-[var(--color-accent)]/40 text-[var(--color-accent)]'
-                : 'border-[var(--color-border2)] text-[var(--color-txt2)] hover:bg-[#111827]'}`}
+                : 'border-[var(--color-border2)] text-[var(--color-txt2)] hover:bg-[var(--color-card)]'}`}
           >
             {n}
           </button>
@@ -156,7 +156,7 @@ function BatteryEvolutionChart() {
             content={({ active, payload, label }) => {
               if (!active || !payload?.length) return null
               return (
-                <div className="bg-[#111827] border border-[var(--color-border)] rounded-lg px-3 py-2 shadow-xl max-h-48 overflow-y-auto">
+                <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-lg px-3 py-2 shadow-xl max-h-48 overflow-y-auto">
                   <div className="text-[10px] text-[var(--color-txt2)] mb-1">t = {label}m</div>
                   {payload.slice(0, 8).map((p, i) => (
                     <div key={i} className="flex items-center gap-2 text-[10px]">
@@ -245,7 +245,7 @@ export default function AvailabilityPlots({
                     className={`px-2 py-0.5 text-[10px] font-bold rounded border transition-colors cursor-pointer
                       ${active
                         ? 'bg-[var(--color-accent)]/20 border-[var(--color-accent)]/40 text-[var(--color-accent)]'
-                        : 'border-[var(--color-border2)] text-[var(--color-txt2)] hover:bg-[#111827]'}`}
+                        : 'border-[var(--color-border2)] text-[var(--color-txt2)] hover:bg-[var(--color-card)]'}`}
                   >
                     {n}
                   </button>
