@@ -25,7 +25,7 @@ function ChartCard({ title, subtitle, children }) {
 function CustomTooltip({ active, payload, label, suffix }) {
   if (!active || !payload?.length) return null
   return (
-    <div className="bg-[#0c101a] border border-[var(--color-border)] rounded-md px-3 py-2 text-[10px] font-[var(--font-mono)] shadow-lg">
+    <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-md px-3 py-2 text-[10px] font-[var(--font-mono)] shadow-lg">
       <div className="text-[var(--color-txt2)] mb-1">Distance: {label} m</div>
       {payload.map((p, i) => (
         <div key={i} style={{ color: p.color }} className="font-semibold">
@@ -173,7 +173,7 @@ export default function GraphsPanel({ config }) {
               <Tooltip content={({ active, payload, label }) => {
                 if (!active || !payload?.length) return null
                 return (
-                  <div className="bg-[#0c101a] border border-[var(--color-border)] rounded-md px-3 py-2 text-[10px] font-[var(--font-mono)] shadow-lg">
+                  <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-md px-3 py-2 text-[10px] font-[var(--font-mono)] shadow-lg">
                     <div className="text-[var(--color-txt2)] mb-1">{label}</div>
                     {payload.map((p, i) => (
                       <div key={i} style={{ color: p.color }} className="font-semibold">

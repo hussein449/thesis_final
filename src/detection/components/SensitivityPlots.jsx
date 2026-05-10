@@ -82,7 +82,7 @@ function computeSweep(sweep) {
 
 function SweepChart({ sweep, data }) {
   return (
-    <div className="rounded-xl border border-[var(--color-border)] bg-[#0d1225] p-4">
+    <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-card)] p-4">
       <div className="mb-1">
         <div className="text-[10px] text-[var(--color-txt2)] uppercase tracking-widest font-semibold">
           {sweep.label}
@@ -96,7 +96,7 @@ function SweepChart({ sweep, data }) {
       </div>
 
       <ResponsiveContainer width="100%" height={210}>
-        <LineChart data={data} margin={{ top: 12, right: 20, left: 0, bottom: 16 }}>
+        <LineChart data={data} margin={{ top: 12, right: 20, left: 0, bottom: 36 }}>
           <CartesianGrid stroke={grid} strokeDasharray="3 3" />
           <XAxis
             dataKey="v"
@@ -127,11 +127,11 @@ function SweepChart({ sweep, data }) {
             content={({ active, payload, label }) => {
               if (!active || !payload?.length) return null
               return (
-                <div className="bg-[#111827] border border-[var(--color-border)] rounded-lg px-3 py-2 shadow-xl">
+                <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-lg px-3 py-2 shadow-xl">
                   <div className="text-[10px] text-[var(--color-txt2)] mb-1">
                     {sweep.label} = {label}{sweep.unit}
                     {label === sweep.defaultVal && (
-                      <span className="ml-1.5 text-amber-400/80">← default</span>
+                      <span className="ml-1.5 text-amber-700/80">← default</span>
                     )}
                   </div>
                   {payload.map((p, i) => (
@@ -147,13 +147,13 @@ function SweepChart({ sweep, data }) {
               )
             }}
           />
-          <Legend wrapperStyle={{ fontSize: 10, color: textColor, paddingTop: 4 }} />
+          <Legend verticalAlign="top" align="right" iconSize={9} wrapperStyle={{ fontSize: 10, color: textColor, paddingBottom: 6 }} />
           <ReferenceLine
             x={sweep.defaultVal}
-            stroke="#fbbf24"
+            stroke="#B45309"
             strokeDasharray="4 3"
             strokeWidth={1}
-            label={{ value: 'default', position: 'top', fill: '#fbbf24', fontSize: 8 }}
+            label={{ value: 'default', position: 'top', fill: '#B45309', fontSize: 8 }}
           />
           <Line
             type="monotone"
@@ -187,7 +187,7 @@ export default function SensitivityPlots() {
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="rounded-xl border border-[var(--color-border)] bg-[#0d1225] px-5 py-4">
+      <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-card)] px-5 py-4">
         <div className="text-[10px] text-[var(--color-txt2)] uppercase tracking-widest font-semibold mb-1">
           Sensitivity Analysis — one parameter at a time
         </div>
@@ -202,9 +202,54 @@ export default function SensitivityPlots() {
             <div key={s.key} className="flex items-center gap-1.5">
               <span className="font-semibold text-[var(--color-txt2)]">{s.label}:</span>
               <span className="font-mono">{s.values.join(', ')} {s.unit}</span>
-              <span className="text-amber-400/70">(def. {s.defaultVal})</span>
+              <span className="text-amber-700/70">(def. {s.defaultVal})</span>
             </div>
           ))}
+        </div>
+      </div>
+
+      {/* What is plotted & params explainer */}
+      <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-card)] px-5 py-4">
+        <div className="text-[10px] text-[var(--color-txt2)] uppercase tracking-widest font-semibold mb-2">
+          What is plotted &amp; how to read it
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-[10.5px] leading-relaxed">
+          <div>
+            <div className="text-[9.5px] uppercase tracking-wider text-slate-500 font-semibold mb-1">
+              Axes
+            </div>
+            <div className="text-[var(--color-txt3)]">
+              <span className="text-slate-300 font-mono">x</span> — value of the swept parameter.
+              <span className="text-slate-300 font-mono ml-2">y</span> — mean detection time (s),
+              averaged over {TRIALS} Monte Carlo trials × all detected accidents.
+            </div>
+            <div className="text-[var(--color-txt3)] mt-2">
+              Two curves per chart: <span style={{ color: POLICIES.uniform.color }} className="font-semibold">Uniform</span> and
+              <span style={{ color: POLICIES.riskAware.color }} className="font-semibold ml-1">Risk-aware</span>.
+              The amber dashed vertical line marks the default value held fixed in every other sweep.
+            </div>
+          </div>
+          <div>
+            <div className="text-[9.5px] uppercase tracking-wider text-slate-500 font-semibold mb-1">
+              Held-fixed parameters
+            </div>
+            <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 font-mono text-[10px] text-slate-300">
+              <span className="text-slate-500">N</span><span>{FIXED_N} drones</span>
+              <span className="text-slate-500">trials/point</span><span>{TRIALS}</span>
+              <span className="text-slate-500">sim time</span><span>1800 s (30 min)</span>
+              <span className="text-slate-500">seed base</span><span>42 (deterministic)</span>
+              <span className="text-slate-500">accident model</span><span>Poisson per road</span>
+            </div>
+          </div>
+        </div>
+        <div className="mt-3 text-[9.5px] text-[var(--color-txt3)] leading-relaxed">
+          <span className="text-[var(--color-txt2)] font-semibold">Swept parameters: </span>
+          <span className="font-mono text-slate-300">droneSpeed</span> (patrol speed),
+          <span className="font-mono text-slate-300 ml-1">accidentRateMultiplier</span> (incident density),
+          <span className="font-mono text-slate-300 ml-1">lowBatteryThreshold</span> (return-to-dock trigger),
+          <span className="font-mono text-slate-300 ml-1">sensingRange</span> (optical detection radius).
+          Each is varied independently while the other three stay at their defaults — so each chart
+          isolates the effect of a single parameter.
         </div>
       </div>
 
@@ -216,7 +261,7 @@ export default function SensitivityPlots() {
       </div>
 
       {/* Interpretation note */}
-      <div className="rounded-xl border border-[var(--color-border)] bg-[#0d1225] px-5 py-3">
+      <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-card)] px-5 py-3">
         <div className="text-[9.5px] text-[var(--color-txt3)] leading-relaxed">
           <span className="text-[var(--color-txt2)] font-semibold">Reading the charts: </span>
           A steeper slope indicates that the metric is more sensitive to that parameter — a small

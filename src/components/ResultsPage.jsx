@@ -1,6 +1,6 @@
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ScatterChart, Scatter } from 'recharts'
 
-const COLORS = ['#00e5ff', '#a78bfa', '#34d399', '#f97316', '#f472b6', '#facc15', '#60a5fa', '#e879f9']
+const COLORS = ['#00e5ff', '#a78bfa', '#047857', '#f97316', '#f472b6', '#B45309', '#1D4ED8', '#e879f9']
 
 const chartTheme = {
   bg: '#0a0e1a',
@@ -11,7 +11,7 @@ const chartTheme = {
 
 function ChartCard({ title, children, className = '' }) {
   return (
-    <div className={`rounded-xl border border-[var(--color-border)] bg-[#0d1225] p-4 ${className}`}>
+    <div className={`rounded-xl border border-[var(--color-border)] bg-[var(--color-card)] p-4 ${className}`}>
       <div className="text-[9px] text-[var(--color-txt2)] uppercase tracking-widest font-semibold mb-3">{title}</div>
       {children}
     </div>
@@ -21,7 +21,7 @@ function ChartCard({ title, children, className = '' }) {
 function CustomTooltip({ active, payload, label, unit = 'ms' }) {
   if (!active || !payload?.length) return null
   return (
-    <div className="bg-[#111827] border border-[var(--color-border)] rounded-lg px-3 py-2 shadow-xl">
+    <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-lg px-3 py-2 shadow-xl">
       <div className="text-[10px] text-[var(--color-txt2)] mb-1">{label}{unit === 'ms' ? ' ms' : ''}</div>
       {payload.map((p, i) => (
         <div key={i} className="flex items-center gap-2 text-[11px]">
@@ -116,7 +116,7 @@ export default function ResultsPage({ state, history, onBack }) {
             { label: 'Events', value: responseEvents.length },
             { label: 'Avg Response', value: responseEvents.length > 0 ? `${(responseEvents.reduce((a, e) => a + e.responseMs, 0) / responseEvents.length).toFixed(0)} ms` : '—' },
           ].map(c => (
-            <div key={c.label} className="rounded-xl bg-[#0d1225] border border-[var(--color-border)] p-4">
+            <div key={c.label} className="rounded-xl bg-[var(--color-card)] border border-[var(--color-border)] p-4">
               <div className="text-[9px] text-[var(--color-txt2)] uppercase tracking-widest font-semibold mb-1">{c.label}</div>
               <div className="text-[18px] font-extrabold text-[var(--color-cyan)] font-mono">{c.value}</div>
             </div>
@@ -170,7 +170,7 @@ export default function ResultsPage({ state, history, onBack }) {
                     <YAxis stroke={chartTheme.text} tick={{ fontSize: 10 }} />
                     <Tooltip content={<CustomTooltip unit="s" />} />
                     <Line type="monotone" dataKey="SOS" stroke="#ef4444" strokeWidth={2} dot={false} />
-                    <Line type="monotone" dataKey="ACK" stroke="#34d399" strokeWidth={2} dot={false} />
+                    <Line type="monotone" dataKey="ACK" stroke="#047857" strokeWidth={2} dot={false} />
                     <Line type="monotone" dataKey="Propose" stroke="#a78bfa" strokeWidth={2} dot={false} />
                     <Line type="monotone" dataKey="Deploy" stroke="#f97316" strokeWidth={2} dot={false} />
                     <Legend wrapperStyle={{ fontSize: 10, color: chartTheme.text }} />
@@ -188,7 +188,7 @@ export default function ResultsPage({ state, history, onBack }) {
                       if (!active || !payload?.length) return null
                       const p = payload[0]?.payload
                       return (
-                        <div className="bg-[#111827] border border-[var(--color-border)] rounded-lg px-3 py-2 shadow-xl text-[11px]">
+                        <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-lg px-3 py-2 shadow-xl text-[11px]">
                           <div className="text-[var(--color-cyan)] font-mono">({p?.x}, {p?.y})</div>
                         </div>
                       )

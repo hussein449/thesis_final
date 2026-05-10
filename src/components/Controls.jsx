@@ -54,7 +54,7 @@ export default function Controls({ state, severity, paused, onTrigger, onPause, 
     <div className="flex flex-col shrink-0 border-b border-[var(--color-border)]">
 
       {/* ── Toolbar row ── */}
-      <div className="flex items-center gap-2 px-4 py-2 bg-[#050a16]">
+      <div className="flex items-center gap-2 px-4 py-2 bg-[var(--color-bg2)]">
 
         {/* Primary action */}
         <button onClick={onTrigger} disabled={disabled || autoMode}
@@ -66,11 +66,11 @@ export default function Controls({ state, severity, paused, onTrigger, onPause, 
         {/* Secondary controls */}
         <div className="flex items-center gap-1 pl-2 border-l border-[var(--color-border2)]">
           <button onClick={onPause}
-            className="flex items-center gap-1.5 px-3 py-[6px] text-[var(--color-txt2)] text-[10px] font-semibold border border-[var(--color-border2)] rounded-md bg-transparent hover:bg-[#0d1525] hover:text-[var(--color-white)] cursor-pointer transition-all">
+            className="flex items-center gap-1.5 px-3 py-[6px] text-[var(--color-txt2)] text-[10px] font-semibold border border-[var(--color-border2)] rounded-md bg-transparent hover:bg-[var(--color-card)] hover:text-[var(--color-white)] cursor-pointer transition-all">
             {paused ? '▶ Resume' : '⏸ Pause'}
           </button>
           <button onClick={onReset}
-            className="flex items-center gap-1.5 px-3 py-[6px] text-[var(--color-txt2)] text-[10px] font-semibold border border-[var(--color-border2)] rounded-md bg-transparent hover:bg-[#0d1525] hover:text-[var(--color-white)] cursor-pointer transition-all">
+            className="flex items-center gap-1.5 px-3 py-[6px] text-[var(--color-txt2)] text-[10px] font-semibold border border-[var(--color-border2)] rounded-md bg-transparent hover:bg-[var(--color-card)] hover:text-[var(--color-white)] cursor-pointer transition-all">
             ↻ Reset
           </button>
         </div>
@@ -96,7 +96,7 @@ export default function Controls({ state, severity, paused, onTrigger, onPause, 
           <button onClick={() => setAutoMode(p => !p)}
             className={`flex items-center gap-1.5 px-3 py-[6px] text-[10px] font-bold uppercase tracking-widest rounded-md border cursor-pointer transition-all ${autoMode
               ? 'bg-[var(--color-accent)]/12 text-[var(--color-accent)] border-[var(--color-accent)]/35'
-              : 'bg-transparent text-[var(--color-txt3)] border-[var(--color-border2)] hover:text-[var(--color-txt2)] hover:bg-[#0d1525]'}`}>
+              : 'bg-transparent text-[var(--color-txt3)] border-[var(--color-border2)] hover:text-[var(--color-txt2)] hover:bg-[var(--color-card)]'}`}>
             <span className="text-[9px]">{autoMode ? '■' : '⟳'}</span>
             {autoMode ? 'Stop Auto' : 'Auto'}
           </button>
@@ -116,7 +116,7 @@ export default function Controls({ state, severity, paused, onTrigger, onPause, 
       </div>
 
       {/* ── Poisson config row ── */}
-      <div className="flex items-center gap-4 px-4 py-1.5 bg-[#030810] border-t border-[var(--color-border)]">
+      <div className="flex items-center gap-4 px-4 py-1.5 bg-[var(--color-bg2)] border-t border-[var(--color-border)]">
         <span className="text-[8px] font-bold text-[var(--color-txt3)] uppercase tracking-[0.14em] shrink-0">Poisson Config</span>
         <div className="w-px h-3 bg-[var(--color-border2)] shrink-0" />
 

@@ -84,11 +84,11 @@ export default function SummaryCard({ results }) {
   const summary = computeSummary(results)
 
   return (
-    <div className="rounded-2xl ring-1 ring-slate-800/80 bg-slate-900/40 p-5">
+    <div className="rounded-2xl ring-1 ring-slate-600/80 bg-slate-700/40 p-5">
       <div className="flex items-start justify-between gap-3 mb-3">
         <div>
           <div className="flex items-center gap-2.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-800" />
             <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-200">
               Summary &amp; tradeoffs
             </span>
@@ -99,7 +99,7 @@ export default function SummaryCard({ results }) {
         </div>
         <button
           onClick={() => downloadCsv(toCsv(results), 'sweep_results.csv')}
-          className="px-3 py-1.5 text-[10.5px] font-medium rounded-lg ring-1 ring-slate-700 text-slate-300 hover:text-slate-100 hover:bg-slate-800/60 cursor-pointer transition-colors"
+          className="px-3 py-1.5 text-[10.5px] font-medium rounded-lg ring-1 ring-slate-700 text-slate-300 hover:text-slate-100 hover:bg-slate-700/50 cursor-pointer transition-colors"
         >
           ⬇ Export CSV
         </button>

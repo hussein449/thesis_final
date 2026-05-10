@@ -7,8 +7,8 @@ import SummaryCard from './components/SummaryCard'
 import LiveMap from './components/LiveMap'
 import SensitivityPlots from './components/SensitivityPlots'
 import DetectionCDFPlots from './components/DetectionCDFPlots'
-import SimExport from './components/SimExport'
 import DispatchComparison from './components/DispatchComparison'
+import { DataSources } from '../partitioning/PartitionPage'
 import { runSweep } from './lib/monteCarlo'
 import { POLICIES } from './lib/policies'
 
@@ -57,8 +57,8 @@ const NAV_GROUPS = [
   {
     label: 'Tools',
     items: [
-      { key: 'export', label: 'Export log',  icon: '⬇', desc: 'CSV / JSON download' },
-      { key: 'live',   label: 'Live trial',  icon: '◉', desc: 'Animated simulation' },
+      { key: 'live',        label: 'Live trial',    icon: '◉', desc: 'Animated simulation · logs · export' },
+      { key: 'datasources', label: 'Data Sources',  icon: '⊕', desc: 'Inputs · citations · provenance' },
     ],
   },
 ]
@@ -67,7 +67,7 @@ const NAV_GROUPS = [
 function NavItem({ item, active, onClick, hasResults, running }) {
   const locked = item.key !== 'configure' && item.key !== 'live' &&
     item.key !== 'dispatch' && item.key !== 'sensitivity' &&
-    item.key !== 'cdf' && item.key !== 'export' &&
+    item.key !== 'cdf' && item.key !== 'datasources' &&
     !hasResults && !running
 
   return (
@@ -75,17 +75,17 @@ function NavItem({ item, active, onClick, hasResults, running }) {
       onClick={() => !locked && onClick(item.key)}
       className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all cursor-pointer group relative
         ${active
-          ? 'bg-slate-800 text-slate-100'
+          ? 'bg-slate-700/50 text-slate-100'
           : locked
             ? 'opacity-40 cursor-not-allowed'
-            : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'}`}
+            : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50/50'}`}
     >
       {/* Active indicator */}
       {active && (
-        <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-blue-400 rounded-r" />
+        <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-blue-800 rounded-r" />
       )}
       <span className={`text-[13px] shrink-0 w-4 text-center leading-none
-        ${active ? 'text-blue-400' : 'text-slate-500 group-hover:text-slate-400'}`}>
+        ${active ? 'text-blue-800' : 'text-slate-500 group-hover:text-slate-400'}`}>
         {item.icon}
       </span>
       <div className="min-w-0 flex-1">
@@ -105,7 +105,7 @@ function NavItem({ item, active, onClick, hasResults, running }) {
 function ContentHeader({ item }) {
   return (
     <div className="flex items-center gap-3 mb-6">
-      <span className="flex items-center justify-center w-8 h-8 rounded-lg bg-slate-800 text-blue-400 text-[14px] shrink-0">
+      <span className="flex items-center justify-center w-8 h-8 rounded-lg bg-slate-700/50 text-blue-800 text-[14px] shrink-0">
         {item.icon}
       </span>
       <div>
@@ -128,7 +128,7 @@ function ProgressBar({ progress }) {
         <span>Running sweep…</span>
         <span>{pct}%</span>
       </div>
-      <div className="h-1 bg-slate-800 rounded-full overflow-hidden">
+      <div className="h-1 bg-slate-700/50 rounded-full overflow-hidden">
         <div
           className="h-full bg-blue-500 rounded-full transition-all duration-150"
           style={{ width: `${pct}%` }}
@@ -191,16 +191,16 @@ export default function DetectionPage() {
   const counts = parseCounts(config.droneCountsText)
 
   return (
-    <div className="flex flex-1 min-h-0 overflow-hidden bg-slate-950">
+    <div className="flex flex-1 min-h-0 overflow-hidden bg-slate-700/50">
 
       {/* ── Sidebar ──────────────────────────────────────── */}
-      <aside className={`${sidebarOpen ? 'w-52' : 'w-10'} shrink-0 flex flex-col border-r border-slate-800/80 bg-[#080d18] transition-all duration-200 overflow-hidden`}>
+      <aside className={`${sidebarOpen ? 'w-52' : 'w-10'} shrink-0 flex flex-col border-r border-slate-600/80 bg-[var(--color-bg2)] transition-all duration-200 overflow-hidden`}>
 
         {/* Sidebar header */}
-        <div className="px-3 py-3 border-b border-slate-800/60 flex items-start justify-between gap-2">
+        <div className="px-3 py-3 border-b border-slate-600/60 flex items-start justify-between gap-2">
           {sidebarOpen && (
             <div className="min-w-0">
-              <div className="text-[9px] font-semibold uppercase tracking-[0.2em] text-blue-400/80 mb-0.5 truncate">
+              <div className="text-[9px] font-semibold uppercase tracking-[0.2em] text-blue-800/80 mb-0.5 truncate">
                 Operations
               </div>
               <div className="text-[13px] font-semibold text-slate-200 leading-tight truncate">
@@ -211,7 +211,7 @@ export default function DetectionPage() {
           )}
           <button
             onClick={() => setSidebarOpen(o => !o)}
-            className="shrink-0 w-6 h-6 flex items-center justify-center rounded-md border border-slate-700 text-slate-400 hover:text-slate-200 hover:bg-slate-800 cursor-pointer transition-colors text-[11px] mt-0.5"
+            className="shrink-0 w-6 h-6 flex items-center justify-center rounded-md border border-slate-700 text-slate-400 hover:text-slate-200 hover:bg-slate-700/50 cursor-pointer transition-colors text-[11px] mt-0.5"
             title={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
           >
             {sidebarOpen ? '‹' : '›'}
@@ -219,16 +219,16 @@ export default function DetectionPage() {
         </div>
 
         {/* Status pill */}
-        <div className={`px-4 py-2.5 border-b border-slate-800/60 ${sidebarOpen ? '' : 'hidden'}`}>
+        <div className={`px-4 py-2.5 border-b border-slate-600/60 ${sidebarOpen ? '' : 'hidden'}`}>
           {running ? (
             <div className="flex items-center gap-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse shrink-0" />
-              <span className="text-[10px] text-amber-400 font-medium">Sweep running</span>
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-700 animate-pulse shrink-0" />
+              <span className="text-[10px] text-amber-700 font-medium">Sweep running</span>
             </div>
           ) : results ? (
             <div className="flex items-center gap-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
-              <span className="text-[10px] text-emerald-400 font-medium">Results ready</span>
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-800 shrink-0" />
+              <span className="text-[10px] text-emerald-800 font-medium">Results ready</span>
             </div>
           ) : (
             <div className="flex items-center gap-2">
@@ -262,13 +262,13 @@ export default function DetectionPage() {
         </nav>
 
         {/* Run / cancel button at sidebar bottom */}
-        <div className={`px-3 py-3 border-t border-slate-800/60 space-y-2 ${sidebarOpen ? '' : 'hidden'}`}>
+        <div className={`px-3 py-3 border-t border-slate-600/60 space-y-2 ${sidebarOpen ? '' : 'hidden'}`}>
           {running ? (
             <>
               <ProgressBar progress={progress} />
               <button
                 onClick={handleCancel}
-                className="w-full py-2 text-[10px] font-semibold rounded-lg border border-red-500/40 text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer"
+                className="w-full py-2 text-[10px] font-semibold rounded-lg border border-red-500/40 text-red-700 hover:bg-red-500/10 transition-colors cursor-pointer"
               >
                 ✕ Cancel
               </button>
@@ -299,7 +299,7 @@ export default function DetectionPage() {
         {/* ── Configure ── */}
         {activeSection === 'configure' && (
           <div className="space-y-4 max-w-3xl">
-            <div className="rounded-xl border border-slate-800/80 bg-slate-900/40 px-5 py-4">
+            <div className="rounded-xl border border-slate-600/80 bg-slate-700/40 px-5 py-4">
               <div className="text-[10px] text-slate-500 uppercase tracking-widest font-semibold mb-3">
                 About this module
               </div>
@@ -359,7 +359,7 @@ export default function DetectionPage() {
         {activeSection === 'allocation' && (
           <div className="space-y-4">
             {/* Fleet picker */}
-            <div className="rounded-xl border border-slate-800/80 bg-slate-900/40 px-5 py-3 flex items-center gap-3 flex-wrap">
+            <div className="rounded-xl border border-slate-600/80 bg-slate-700/40 px-5 py-3 flex items-center gap-3 flex-wrap">
               <span className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold">Fleet size</span>
               {counts.map((n) => (
                 <button
@@ -367,8 +367,8 @@ export default function DetectionPage() {
                   onClick={() => setSelectedN(n)}
                   className={`px-3 py-1 text-[11px] font-bold rounded-lg border transition-colors cursor-pointer
                     ${n === selectedN
-                      ? 'bg-blue-500/20 border-blue-400/40 text-blue-300'
-                      : 'border-slate-700 text-slate-400 hover:bg-slate-800'}`}
+                      ? 'bg-blue-500/20 border-blue-400/40 text-blue-800'
+                      : 'border-slate-700 text-slate-400 hover:bg-slate-700/50'}`}
                 >
                   N = {n}
                 </button>
@@ -386,16 +386,16 @@ export default function DetectionPage() {
           <DispatchComparison />
         )}
 
-        {/* ── Export ── */}
-        {activeSection === 'export' && (
-          <SimExport params={config.params} />
+        {/* ── Data Sources ── */}
+        {activeSection === 'datasources' && (
+          <DataSources />
         )}
 
         {/* ── Live trial ── */}
         {activeSection === 'live' && (
           <div className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="rounded-xl border border-slate-800/80 bg-slate-900/40 px-5 py-4">
+              <div className="rounded-xl border border-slate-600/80 bg-slate-700/40 px-5 py-4">
                 <div className="text-[9px] text-slate-500 uppercase tracking-[0.16em] font-semibold mb-2.5">
                   Allocation policy
                 </div>
@@ -407,7 +407,7 @@ export default function DetectionPage() {
                         key={p.key}
                         onClick={() => setLivePolicy(p.key)}
                         className={`flex items-center gap-2 px-3.5 py-1.5 text-[11px] font-medium rounded-lg transition-all cursor-pointer ring-1
-                          ${active ? '' : 'ring-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'}`}
+                          ${active ? '' : 'ring-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-700/50/50'}`}
                         style={active ? {
                           background: p.color + '18',
                           color: p.color,
@@ -421,7 +421,7 @@ export default function DetectionPage() {
                   })}
                 </div>
               </div>
-              <div className="rounded-xl border border-slate-800/80 bg-slate-900/40 px-5 py-4">
+              <div className="rounded-xl border border-slate-600/80 bg-slate-700/40 px-5 py-4">
                 <div className="text-[9px] text-slate-500 uppercase tracking-[0.16em] font-semibold mb-2.5">
                   Fleet size
                 </div>
@@ -434,8 +434,8 @@ export default function DetectionPage() {
                         onClick={() => setSelectedN(n)}
                         className={`px-3 py-1.5 text-[11px] font-medium rounded-lg transition-colors cursor-pointer min-w-[48px] ring-1
                           ${active
-                            ? 'bg-blue-500/15 ring-blue-400/40 text-blue-200'
-                            : 'ring-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'}`}
+                            ? 'bg-blue-500/15 ring-blue-700/40 text-blue-800'
+                            : 'ring-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-700/50/50'}`}
                       >
                         N&nbsp;=&nbsp;{n}
                       </button>
@@ -455,7 +455,7 @@ export default function DetectionPage() {
 
 function EmptyState({ label }) {
   return (
-    <div className="rounded-xl border border-dashed border-slate-800 px-6 py-8 text-center">
+    <div className="rounded-xl border border-dashed border-slate-600 px-6 py-8 text-center">
       <div className="text-[11px] text-slate-600">{label}</div>
     </div>
   )

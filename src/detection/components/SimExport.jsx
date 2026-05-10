@@ -78,7 +78,7 @@ export default function SimExport({ params }) {
   return (
     <div className="space-y-4">
       {/* Config bar */}
-      <div className="rounded-xl border border-[var(--color-border)] bg-[#0d1225] px-5 py-4">
+      <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-card)] px-5 py-4">
         <div className="text-[10px] text-[var(--color-txt2)] uppercase tracking-widest font-semibold mb-1">
           Simulation log export
         </div>
@@ -125,11 +125,11 @@ export default function SimExport({ params }) {
           {/* Stats */}
           <div className="ml-auto flex gap-4 text-[10px]">
             <div className="text-center">
-              <div className="font-mono text-[18px] font-bold text-emerald-400">{detected}</div>
+              <div className="font-mono text-[18px] font-bold text-emerald-800">{detected}</div>
               <div className="text-[var(--color-txt3)]">detected</div>
             </div>
             <div className="text-center">
-              <div className="font-mono text-[18px] font-bold text-red-400">{missed}</div>
+              <div className="font-mono text-[18px] font-bold text-red-700">{missed}</div>
               <div className="text-[var(--color-txt3)]">missed</div>
             </div>
             <div className="text-center">
@@ -143,7 +143,7 @@ export default function SimExport({ params }) {
       {/* Download cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Accident log */}
-        <div className="rounded-xl border border-[var(--color-border)] bg-[#0d1225] p-4">
+        <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-card)] p-4">
           <div className="flex items-start justify-between gap-3 mb-3">
             <div>
               <div className="text-[10px] text-[var(--color-txt2)] uppercase tracking-widest font-semibold">
@@ -154,7 +154,7 @@ export default function SimExport({ params }) {
               </div>
             </div>
             <button onClick={() => handleDownload('accident', 'accident-log')}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold rounded-lg border border-emerald-500/40 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 transition-colors cursor-pointer shrink-0">
+              className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold rounded-lg border border-emerald-500/40 bg-emerald-500/10 text-emerald-800 hover:bg-emerald-500/20 transition-colors cursor-pointer shrink-0">
               ⬇ Download .{format.toUpperCase()}
             </button>
           </div>
@@ -170,7 +170,7 @@ export default function SimExport({ params }) {
           </div>
 
           {/* Preview */}
-          <div className="mt-3 overflow-x-auto rounded-lg border border-[var(--color-border2)] bg-[#080d1a]">
+          <div className="mt-3 overflow-x-auto rounded-lg border border-[var(--color-border2)] bg-[var(--color-card)]">
             <table className="w-full text-[8.5px] font-mono">
               <thead>
                 <tr className="border-b border-[var(--color-border2)]">
@@ -184,7 +184,7 @@ export default function SimExport({ params }) {
                   <tr key={i} className="border-b border-[var(--color-border2)]/40">
                     {Object.values(row).map((v, j) => (
                       <td key={j} className={`px-2 py-1 whitespace-nowrap
-                        ${v === 'detected' ? 'text-emerald-400' : v === 'missed' ? 'text-red-400' : 'text-[var(--color-txt2)]'}`}>
+                        ${v === 'detected' ? 'text-emerald-800' : v === 'missed' ? 'text-red-700' : 'text-[var(--color-txt2)]'}`}>
                         {String(v === '' ? '—' : v)}
                       </td>
                     ))}
@@ -201,7 +201,7 @@ export default function SimExport({ params }) {
         </div>
 
         {/* Drone state log */}
-        <div className="rounded-xl border border-[var(--color-border)] bg-[#0d1225] p-4">
+        <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-card)] p-4">
           <div className="flex items-start justify-between gap-3 mb-3">
             <div>
               <div className="text-[10px] text-[var(--color-txt2)] uppercase tracking-widest font-semibold">
@@ -212,7 +212,7 @@ export default function SimExport({ params }) {
               </div>
             </div>
             <button onClick={() => handleDownload('drone', 'drone-log')}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold rounded-lg border border-blue-500/40 bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 transition-colors cursor-pointer shrink-0">
+              className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold rounded-lg border border-blue-500/40 bg-blue-500/10 text-blue-800 hover:bg-blue-500/20 transition-colors cursor-pointer shrink-0">
               ⬇ Download .{format.toUpperCase()}
             </button>
           </div>
@@ -228,7 +228,7 @@ export default function SimExport({ params }) {
           </div>
 
           {/* Preview */}
-          <div className="mt-3 overflow-x-auto rounded-lg border border-[var(--color-border2)] bg-[#080d1a]">
+          <div className="mt-3 overflow-x-auto rounded-lg border border-[var(--color-border2)] bg-[var(--color-card)]">
             <table className="w-full text-[8.5px] font-mono">
               <thead>
                 <tr className="border-b border-[var(--color-border2)]">
@@ -242,7 +242,7 @@ export default function SimExport({ params }) {
                   <tr key={i} className="border-b border-[var(--color-border2)]/40">
                     {Object.values(row).map((v, j) => (
                       <td key={j} className={`px-2 py-1 whitespace-nowrap
-                        ${v === 'docked' ? 'text-amber-400' : v === 'returning' ? 'text-orange-400' : 'text-[var(--color-txt2)]'}`}>
+                        ${v === 'docked' ? 'text-amber-700' : v === 'returning' ? 'text-orange-700' : 'text-[var(--color-txt2)]'}`}>
                         {String(v)}
                       </td>
                     ))}
@@ -259,7 +259,7 @@ export default function SimExport({ params }) {
         </div>
       </div>
 
-      <div className="rounded-xl border border-[var(--color-border)] bg-[#0d1225] px-5 py-3">
+      <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-card)] px-5 py-3">
         <div className="text-[9.5px] text-[var(--color-txt3)] leading-relaxed">
           <span className="text-[var(--color-txt2)] font-semibold">Export schema: </span>
           Both files share the same trial parameters (N = {EXPORT_N}, seed = {EXPORT_SEED}).

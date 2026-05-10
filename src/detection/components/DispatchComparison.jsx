@@ -12,19 +12,19 @@ const DISPATCH_STRATEGIES = [
   {
     key: 'nearest',
     label: 'Nearest drone',
-    color: '#22d3ee',
+    color: '#1D4ED8',
     description: 'Dispatch the patrolling drone closest to the accident location.',
   },
   {
     key: 'batteryFirst',
     label: 'Battery-aware',
-    color: '#f97316',
+    color: '#B45309',
     description: 'Dispatch the drone with the highest remaining battery — maximises range margin.',
   },
   {
     key: 'balanced',
     label: 'Balanced load',
-    color: '#a78bfa',
+    color: '#6D28D9',
     description: 'Dispatch the drone with the fewest prior dispatches — distributes wear evenly.',
   },
 ]
@@ -59,7 +59,7 @@ function computeDispatchSweep() {
 function CustomTooltip({ active, payload, label, xLabel = 'N', xUnit = ' drones' }) {
   if (!active || !payload?.length) return null
   return (
-    <div className="bg-[#111827] border border-[var(--color-border)] rounded-lg px-3 py-2 shadow-xl">
+    <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-lg px-3 py-2 shadow-xl">
       <div className="text-[10px] text-[var(--color-txt2)] mb-1">{xLabel} = {label}{xUnit}</div>
       {payload.map((p, i) => (
         <div key={i} className="flex items-center gap-2 text-[11px]">
@@ -80,7 +80,7 @@ export default function DispatchComparison() {
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="rounded-xl border border-[var(--color-border)] bg-[#0d1225] px-5 py-4">
+      <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-card)] px-5 py-4">
         <div className="text-[10px] text-[var(--color-txt2)] uppercase tracking-widest font-semibold mb-1">
           Dispatch strategy comparison — active-response model
         </div>
@@ -110,7 +110,7 @@ export default function DispatchComparison() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Mean detection time vs N */}
-        <div className="rounded-xl border border-[var(--color-border)] bg-[#0d1225] p-4">
+        <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-card)] p-4">
           <div className="text-[10px] text-[var(--color-txt2)] uppercase tracking-widest font-semibold mb-1">
             Mean detection time vs fleet size
           </div>
@@ -125,9 +125,9 @@ export default function DispatchComparison() {
               <YAxis stroke={textColor} tick={{ fontSize: 10 }} tickFormatter={(v) => `${v}s`}
                 label={{ value: 'Mean detect. time (s)', angle: -90, position: 'insideLeft', fill: textColor, fontSize: 10 }} />
               <Tooltip content={<CustomTooltip xUnit=" drones" />} />
-              <Legend wrapperStyle={{ fontSize: 10, color: textColor, paddingTop: 4 }} />
-              <ReferenceLine y={120} stroke="#fbbf24" strokeDasharray="4 3" strokeWidth={1}
-                label={{ value: '2 min', position: 'insideTopRight', fill: '#fbbf24', fontSize: 9 }} />
+              <Legend verticalAlign="top" align="right" iconSize={9} wrapperStyle={{ fontSize: 10, color: textColor, paddingBottom: 6 }} />
+              <ReferenceLine y={120} stroke="#B45309" strokeDasharray="4 3" strokeWidth={1}
+                label={{ value: '2 min', position: 'insideTopRight', fill: '#B45309', fontSize: 9 }} />
               {DISPATCH_STRATEGIES.map((ds) => (
                 <Line key={ds.key} type="monotone" dataKey={`${ds.key}_avg`}
                   name={ds.label} stroke={ds.color} strokeWidth={2}
@@ -138,7 +138,7 @@ export default function DispatchComparison() {
         </div>
 
         {/* Missed % vs N */}
-        <div className="rounded-xl border border-[var(--color-border)] bg-[#0d1225] p-4">
+        <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-card)] p-4">
           <div className="text-[10px] text-[var(--color-txt2)] uppercase tracking-widest font-semibold mb-1">
             Missed accidents (%) vs fleet size
           </div>
@@ -153,7 +153,7 @@ export default function DispatchComparison() {
               <YAxis stroke={textColor} tick={{ fontSize: 10 }} tickFormatter={(v) => `${v}%`}
                 label={{ value: '% missed', angle: -90, position: 'insideLeft', fill: textColor, fontSize: 10 }} />
               <Tooltip content={<CustomTooltip xUnit=" drones" />} />
-              <Legend wrapperStyle={{ fontSize: 10, color: textColor, paddingTop: 4 }} />
+              <Legend verticalAlign="top" align="right" iconSize={9} wrapperStyle={{ fontSize: 10, color: textColor, paddingBottom: 6 }} />
               {DISPATCH_STRATEGIES.map((ds) => (
                 <Bar key={ds.key} dataKey={`${ds.key}_missedPct`}
                   name={ds.label} fill={ds.color} opacity={0.8} />
@@ -164,14 +164,14 @@ export default function DispatchComparison() {
       </div>
 
       {/* Interpretation */}
-      <div className="rounded-xl border border-[var(--color-border)] bg-[#0d1225] px-5 py-3">
+      <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-card)] px-5 py-3">
         <div className="text-[9.5px] text-[var(--color-txt3)] leading-relaxed">
           <span className="text-[var(--color-txt2)] font-semibold">Key insight: </span>
-          In the active-dispatch model, <span className="text-[#22d3ee]">Nearest</span> minimises
+          In the active-dispatch model, <span className="text-[#1D4ED8] font-semibold">Nearest</span> minimises
           travel time but may repeatedly task the same drone, draining its battery.{' '}
-          <span className="text-[#a78bfa]">Balanced load</span> distributes dispatches evenly,
+          <span className="text-[#6D28D9] font-semibold">Balanced load</span> distributes dispatches evenly,
           keeping more drones mission-ready.{' '}
-          <span className="text-[#f97316]">Battery-aware</span> avoids dispatching a nearly-depleted
+          <span className="text-[#B45309] font-semibold">Battery-aware</span> avoids dispatching a nearly-depleted
           drone, reducing mid-response docking events. Missed-accident rate depends primarily on
           fleet coverage — all strategies converge as N grows and coverage gaps close.
         </div>

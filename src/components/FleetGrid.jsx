@@ -4,11 +4,11 @@ const stateColor = {
   ackSender:        '#10b981',
   deploy:           '#7c3aed',
   flying:           '#7c3aed',
-  backup:           '#d97706',
+  backup:           '#B45309',
   arrived:          '#059669',
   returning:        '#14b8a6',
   docked:           '#0d9488',
-  returningToPatrol:'#22d3ee',
+  returningToPatrol:'#0E7490',
 }
 
 const stateLabel = {
@@ -25,7 +25,7 @@ const stateLabel = {
 }
 
 function batColor(b) {
-  return b > 50 ? '#10b981' : b > 30 ? '#f59e0b' : '#ef4444'
+  return b > 50 ? '#10b981' : b > 30 ? '#B45309' : '#ef4444'
 }
 
 function DroneCard({ d, distM }) {
@@ -121,7 +121,7 @@ export default function FleetGrid({ drones, reserves, state, wide = false }) {
       {/* Section header */}
       <div className="flex items-center gap-2 px-3.5 py-2 bg-[var(--color-card)] border-b border-[var(--color-border)] shrink-0">
         <span className="w-1.5 h-1.5 rounded-full shrink-0"
-          style={{ background: activeCount > 0 ? '#f59e0b' : '#14b8a6' }} />
+          style={{ background: activeCount > 0 ? '#B45309' : '#14b8a6' }} />
         <span className="text-[9px] font-bold text-[var(--color-txt2)] uppercase tracking-[0.12em]">Fleet Status</span>
         <div className="flex items-center gap-3 ml-auto font-[var(--font-mono)] text-[8px]">
           <span className="text-[var(--color-txt3)]">
@@ -130,7 +130,7 @@ export default function FleetGrid({ drones, reserves, state, wide = false }) {
           <div className="w-px h-3 bg-[var(--color-border2)]" />
           <span className="text-[var(--color-txt3)]">
             <span className="font-bold tabular-nums"
-              style={{ color: activeCount > 0 ? '#f59e0b' : 'var(--color-txt3)' }}>{activeCount}</span>
+              style={{ color: activeCount > 0 ? '#B45309' : 'var(--color-txt3)' }}>{activeCount}</span>
             <span>/{drones.length} active</span>
           </span>
         </div>

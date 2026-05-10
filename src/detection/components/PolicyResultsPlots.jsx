@@ -16,7 +16,7 @@ const text = '#64748b'
 
 function ChartCard({ title, subtitle, children }) {
   return (
-    <div className="rounded-xl border border-[var(--color-border)] bg-[#0d1225] p-4">
+    <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-card)] p-4">
       <div className="mb-3">
         <div className="text-[10px] text-[var(--color-txt2)] uppercase tracking-widest font-semibold">
           {title}
@@ -33,7 +33,7 @@ function ChartCard({ title, subtitle, children }) {
 function CustomTooltip({ active, payload, label, unit, decimals = 1 }) {
   if (!active || !payload?.length) return null
   return (
-    <div className="bg-[#111827] border border-[var(--color-border)] rounded-lg px-3 py-2 shadow-xl">
+    <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-lg px-3 py-2 shadow-xl">
       <div className="text-[10px] text-[var(--color-txt2)] mb-1">N = {label} drones</div>
       {payload.map((p, i) => (
         <div key={i} className="flex items-center gap-2 text-[11px]">

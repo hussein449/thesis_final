@@ -9,7 +9,6 @@ import FleetGrid from './components/FleetGrid'
 import Settings from './components/Settings'
 import Results from './components/ResultsPage'
 // import LoraApp from './lora/LoraApp'
-import PartitionPage from './partitioning/PartitionPage'
 import DetectionPage from './detection/DetectionPage'
 
 // ─── Reusable icon ────────────────────────────────────────────────────────────
@@ -34,9 +33,8 @@ function AppHeader({
 }) {
   const tabs = [
     { key: 'detection', label: 'Operations',          icon: '◇' },
-    { key: 'partition', label: 'Risk Partitioning',   icon: '⬡' },
     { key: 'sim',       label: 'Dispatch Protocol',   icon: '◈' },
-    // { key: 'lora',      label: 'Link Budget',         icon: '◉' },
+    { key: 'hardware',  label: 'Hardware Link',       icon: '⌬', soon: true },
   ]
 
   const simPhase =
@@ -54,42 +52,99 @@ function AppHeader({
     : '#4e6080'
 
   return (
-    <header className="flex items-center gap-0 h-[50px] shrink-0 bg-[#020508] border-b border-[var(--color-border)] px-4 overflow-x-auto">
+    <header className="flex items-center gap-0 h-[52px] shrink-0 bg-[var(--color-bg2)] border-b border-[var(--color-border)] px-5 overflow-x-auto">
 
       {/* ── Branding ── */}
-      <div className="flex items-center gap-2.5 shrink-0 pr-4 border-r border-[var(--color-border)]">
-        <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-[var(--color-cyan)] to-[var(--color-accent)] flex items-center justify-center shadow-[0_0_12px_rgba(34,211,238,0.25)]">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round">
-            <path d="M12 2L4 6v6c0 5 3.5 9.7 8 11 4.5-1.3 8-6 8-11V6L12 2z"/>
-            <circle cx="12" cy="12" r="2" fill="white" stroke="none"/>
-          </svg>
-        </div>
+      <div className="flex items-center gap-3 shrink-0 pr-5 border-r border-[var(--color-border)]">
+        <svg
+          width="34"
+          height="34"
+          viewBox="0 0 40 40"
+          xmlns="http://www.w3.org/2000/svg"
+          className="shrink-0 drop-shadow-[0_2px_6px_rgba(0,0,0,0.35)]"
+          aria-label="Command Center Tool logo"
+        >
+          {/* Hexagon frame — forest gradient + subtle gold rim */}
+          <defs>
+            <linearGradient id="ccLogoBg" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%"  stopColor="#1E4D2B" />
+              <stop offset="100%" stopColor="#0F2C18" />
+            </linearGradient>
+            <radialGradient id="ccLogoGlow" cx="50%" cy="42%" r="55%">
+              <stop offset="0%"  stopColor="rgba(212,175,55,0.35)" />
+              <stop offset="70%" stopColor="rgba(212,175,55,0.0)" />
+            </radialGradient>
+          </defs>
+
+          {/* Hex outline (rotated flat-top hexagon) */}
+          <path
+            d="M20 2 L36 11 L36 29 L20 38 L4 29 L4 11 Z"
+            fill="url(#ccLogoBg)"
+            stroke="#D4AF37"
+            strokeWidth="1.4"
+            strokeLinejoin="round"
+          />
+
+          {/* Inner glow */}
+          <path
+            d="M20 2 L36 11 L36 29 L20 38 L4 29 L4 11 Z"
+            fill="url(#ccLogoGlow)"
+          />
+
+          {/* Crosshair / target ring */}
+          <circle cx="20" cy="20" r="9" fill="none" stroke="#FAF9F6" strokeWidth="0.9" opacity="0.55" />
+          <line x1="20" y1="9"  x2="20" y2="13" stroke="#FAF9F6" strokeWidth="0.9" opacity="0.55" />
+          <line x1="20" y1="27" x2="20" y2="31" stroke="#FAF9F6" strokeWidth="0.9" opacity="0.55" />
+          <line x1="9"  y1="20" x2="13" y2="20" stroke="#FAF9F6" strokeWidth="0.9" opacity="0.55" />
+          <line x1="27" y1="20" x2="31" y2="20" stroke="#FAF9F6" strokeWidth="0.9" opacity="0.55" />
+
+          {/* Quadcopter — top-down silhouette */}
+          {/* Arms (X pattern) */}
+          <line x1="14" y1="14" x2="26" y2="26" stroke="#FAF9F6" strokeWidth="1.6" strokeLinecap="round" />
+          <line x1="26" y1="14" x2="14" y2="26" stroke="#FAF9F6" strokeWidth="1.6" strokeLinecap="round" />
+          {/* Rotor housings (4 corners) — gold accents */}
+          <circle cx="14" cy="14" r="2.2" fill="#D4AF37" stroke="#FAF9F6" strokeWidth="0.6" />
+          <circle cx="26" cy="14" r="2.2" fill="#D4AF37" stroke="#FAF9F6" strokeWidth="0.6" />
+          <circle cx="14" cy="26" r="2.2" fill="#D4AF37" stroke="#FAF9F6" strokeWidth="0.6" />
+          <circle cx="26" cy="26" r="2.2" fill="#D4AF37" stroke="#FAF9F6" strokeWidth="0.6" />
+          {/* Central body */}
+          <circle cx="20" cy="20" r="3" fill="#FAF9F6" />
+          <circle cx="20" cy="20" r="1.4" fill="#1E4D2B" />
+        </svg>
         <div className="leading-none">
-          <div className="text-[12px] font-extrabold text-[var(--color-white)] tracking-tight">
+          <div className="text-[13px] font-bold text-[var(--color-white)] tracking-tight">
             Command Center
           </div>
-          <div className="text-[8px] text-[var(--color-txt3)] uppercase tracking-[0.15em] mt-0.5">
-            Simulation-Aided · AUB
+          <div className="text-[8.5px] uppercase tracking-[0.18em] text-[var(--color-sidebar-muted)] mt-1 font-semibold">
+            UAV Dispatch · Risk Ops
           </div>
         </div>
       </div>
 
       {/* ── Navigation tabs ── */}
-      <nav className="flex items-center gap-0.5 px-3 shrink-0">
+      <nav className="flex items-center gap-1 px-4 shrink-0">
         {tabs.map(t => {
           const active = t.key === page || (t.key === 'sim' && page === 'results')
           return (
             <button
               key={t.key}
-              onClick={() => setPage(t.key)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-semibold transition-all cursor-pointer border
+              onClick={() => { if (!t.soon) setPage(t.key) }}
+              className={`relative flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11.5px] font-medium transition-colors
                 ${active
-                  ? 'bg-[var(--color-accent)]/15 text-[var(--color-accent)] border-[var(--color-accent)]/30 shadow-[0_0_12px_rgba(45,127,249,0.12)]'
-                  : 'text-[var(--color-txt3)] border-transparent hover:text-[var(--color-txt2)] hover:bg-white/5'
+                  ? 'bg-[var(--color-accent)]/15 text-[var(--color-accent)] ring-1 ring-[var(--color-accent)]/30 cursor-pointer'
+                  : t.soon
+                    ? 'text-[var(--color-txt3)] cursor-not-allowed'
+                    : 'text-[var(--color-txt2)] hover:text-[var(--color-white)] hover:bg-white/5 cursor-pointer'
                 }`}
+              title={t.soon ? 'Coming soon' : undefined}
             >
-              <span className="text-[10px]">{t.icon}</span>
+              <span className="text-[11px]">{t.icon}</span>
               {t.label}
+              {t.soon && (
+                <span className="ml-1 px-1.5 py-[1px] rounded text-[8.5px] font-bold uppercase tracking-wider bg-amber-500/15 text-amber-700 ring-1 ring-amber-700/30">
+                  Soon
+                </span>
+              )}
             </button>
           )
         })}
@@ -144,13 +199,13 @@ function AppHeader({
           <div className="flex-1" />
           <button
             onClick={onNavigateResults}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[10px] font-bold border border-[var(--color-border2)] text-[var(--color-txt2)] hover:bg-[#111827] transition-colors cursor-pointer shrink-0"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[10px] font-bold border border-[var(--color-border2)] text-[var(--color-txt2)] hover:bg-[var(--color-card)] transition-colors cursor-pointer shrink-0"
           >
             ⬡ Results
           </button>
           <button
             onClick={onOpenSimSettings}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[10px] font-bold border border-[var(--color-border2)] text-[var(--color-txt2)] hover:bg-[#111827] transition-colors cursor-pointer shrink-0"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[10px] font-bold border border-[var(--color-border2)] text-[var(--color-txt2)] hover:bg-[var(--color-card)] transition-colors cursor-pointer shrink-0"
           >
             <GearIcon /> Settings
           </button>
@@ -161,7 +216,7 @@ function AppHeader({
           <div className="flex-1" />
           <button
             onClick={() => setPage('sim')}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[10px] font-bold border border-[var(--color-border2)] text-[var(--color-txt2)] hover:bg-[#111827] transition-colors cursor-pointer"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[10px] font-bold border border-[var(--color-border2)] text-[var(--color-txt2)] hover:bg-[var(--color-card)] transition-colors cursor-pointer"
           >
             ← Back to dispatch protocol
           </button>
@@ -177,7 +232,7 @@ function AppHeader({
               className={`px-3 py-1.5 text-[10px] font-semibold rounded-md border transition-all cursor-pointer shrink-0
                 ${loraScenario === key
                   ? 'bg-[var(--color-accent)] text-white border-transparent shadow-[0_0_12px_rgba(45,127,249,0.2)]'
-                  : 'text-[var(--color-txt2)] border-[var(--color-border2)] hover:bg-[#111827]'}`}
+                  : 'text-[var(--color-txt2)] border-[var(--color-border2)] hover:bg-[var(--color-card)]'}`}
             >
               {sc.name}
             </button>
@@ -189,29 +244,19 @@ function AppHeader({
             className={`px-3 py-1.5 text-[10px] font-semibold rounded-md border transition-all cursor-pointer shrink-0
               ${showLoraGraphs
                 ? 'bg-[var(--color-violet)]/20 text-[var(--color-violet)] border-[var(--color-violet)]/40'
-                : 'text-[var(--color-txt2)] border-[var(--color-border2)] hover:bg-[#111827]'}`}
+                : 'text-[var(--color-txt2)] border-[var(--color-border2)] hover:bg-[var(--color-card)]'}`}
           >
             {showLoraGraphs ? '✕ Graphs' : 'Graphs'}
           </button>
           <button
             onClick={onOpenLoraSettings}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[10px] font-bold border border-[var(--color-border2)] text-[var(--color-txt2)] hover:bg-[#111827] transition-colors cursor-pointer shrink-0"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[10px] font-bold border border-[var(--color-border2)] text-[var(--color-txt2)] hover:bg-[var(--color-card)] transition-colors cursor-pointer shrink-0"
           >
             <GearIcon /> Settings
           </button>
         </>}
         */}
 
-        {/* PARTITION page */}
-        {page === 'partition' && <>
-          <span className="text-[10px] text-[var(--color-txt3)] hidden sm:inline">
-            Risk-proportional allocation · Hamilton / Largest-Remainder
-          </span>
-          <div className="flex-1" />
-          <span className="text-[9px] text-[var(--color-txt3)] uppercase tracking-widest font-semibold shrink-0">Fleet</span>
-          <span className="text-[15px] font-bold font-mono text-[var(--color-cyan)] leading-none shrink-0">{partitionDroneCount}</span>
-          <span className="text-[9px] text-[var(--color-txt3)] shrink-0">UAVs</span>
-        </>}
 
       </div>
     </header>
@@ -401,14 +446,6 @@ export default function App() {
   }
   */
 
-  if (page === 'partition') {
-    return (
-      <div className="min-h-screen bg-[var(--color-bg)] flex flex-col">
-        <AppHeader {...headerProps} />
-        <PartitionPage droneCount={partitionDroneCount} onDroneCountChange={setPartitionDroneCount} />
-      </div>
-    )
-  }
 
   /* Dispatch protocol (legacy CNP simulator) */
   const simPhaseLabel =
@@ -440,48 +477,55 @@ export default function App() {
         <div className="flex flex-col flex-1 min-w-0 min-h-0 border-r border-[var(--color-border)]">
 
           {/* Viewport info strip */}
-          <div className="flex items-center gap-3 px-4 py-[6px] bg-[#030b14] border-b border-[var(--color-border)] shrink-0 overflow-x-auto">
-            <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-4 px-5 py-2.5 bg-[var(--color-bg2)] border-b border-[var(--color-border)] shrink-0 overflow-x-auto">
+            <div className="flex items-center gap-2.5 shrink-0">
               <span
-                className="w-[7px] h-[7px] rounded-full shrink-0 transition-all duration-300"
-                style={{ background: simPhaseColor, boxShadow: s.simState !== 'idle' ? `0 0 7px ${simPhaseColor}bb` : 'none' }}
+                className="w-1.5 h-1.5 rounded-full shrink-0 transition-all duration-300"
+                style={{ background: simPhaseColor, boxShadow: s.simState !== 'idle' ? `0 0 8px ${simPhaseColor}cc` : 'none' }}
               />
-              <span className="text-[8.5px] font-bold text-[var(--color-txt3)] uppercase tracking-[0.15em] whitespace-nowrap">
-                Dispatch Protocol Demo
+              <span className="text-[11px] font-semibold text-slate-100 tracking-tight whitespace-nowrap">
+                Dispatch Protocol
               </span>
-              <span className="text-[var(--color-border2)] text-[9px]">·</span>
-              <span className="text-[8.5px] text-[var(--color-txt3)] whitespace-nowrap">CNP single-incident view</span>
+              <span className="text-slate-700 text-[10px]">/</span>
+              <span className="text-[10px] text-slate-500 whitespace-nowrap">CNP single-incident</span>
             </div>
-            <div className="w-px h-3 bg-[var(--color-border2)] shrink-0" />
-            <div
-              className="flex items-center gap-1.5 px-2 py-[2px] rounded-full border text-[8px] font-bold uppercase tracking-wide shrink-0"
-              style={{ color: simPhaseColor, borderColor: simPhaseColor + '44', background: simPhaseColor + '12' }}
+
+            <span
+              className="px-2.5 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-[0.14em] shrink-0 ring-1"
+              style={{ color: simPhaseColor, borderColor: simPhaseColor + '44', background: simPhaseColor + '14', boxShadow: `inset 0 0 0 1px ${simPhaseColor}44` }}
             >
               {simPhaseLabel}
-            </div>
-            <div className="flex items-center gap-4 font-[var(--font-mono)] text-[8.5px] shrink-0">
-              <span className="text-[var(--color-txt3)]">
-                Fleet <span className="text-[var(--color-cyan)] font-bold ml-0.5">{s.drones.length + s.reserveDrones.length}</span>
+            </span>
+
+            <div className="flex items-center gap-3 font-mono text-[10px] shrink-0">
+              <span className="text-slate-500">
+                Fleet <span className="text-cyan-800 font-bold tabular-nums ml-0.5">{s.drones.length + s.reserveDrones.length}</span>
               </span>
-              <span className="text-[var(--color-txt3)]">
-                Sensors <span className="text-[var(--color-accent)] font-bold ml-0.5">4</span>
+              <span className="text-slate-700">·</span>
+              <span className="text-slate-500">
+                Sensors <span className="text-purple-700 font-bold tabular-nums ml-0.5">4</span>
               </span>
               {s.simState !== 'idle' && (
-                <span className="text-[var(--color-txt3)]">
-                  Active <span className="font-bold ml-0.5" style={{ color: '#ef4444' }}>S{s.activeSensorIdx + 1}</span>
-                </span>
+                <>
+                  <span className="text-slate-700">·</span>
+                  <span className="text-slate-500">
+                    Active <span className="font-bold ml-0.5 text-rose-700 tabular-nums">S{s.activeSensorIdx + 1}</span>
+                  </span>
+                </>
               )}
             </div>
-            <div className="ml-auto flex items-center gap-1.5 font-[var(--font-mono)] text-[8.5px] shrink-0">
-              <span className="text-[var(--color-txt3)] uppercase tracking-wider">T+</span>
-              <span className="text-[var(--color-white)] font-bold tabular-nums">
-                {String(Math.floor(s.simMs)).padStart(6, '0')}<span className="text-[var(--color-txt3)] font-normal">ms</span>
+
+            <div className="ml-auto flex items-center gap-2 font-mono text-[10px] shrink-0">
+              <span className="text-slate-500 uppercase tracking-wider text-[9px]">T+</span>
+              <span className="text-slate-100 font-bold tabular-nums">
+                {String(Math.floor(s.simMs)).padStart(6, '0')}
+                <span className="text-slate-500 font-normal ml-0.5">ms</span>
               </span>
             </div>
           </div>
 
           {/* Canvas area */}
-          <div className="flex-1 min-h-0 bg-[#02060f] p-3 overflow-hidden flex items-start">
+          <div className="flex-1 min-h-0 bg-[var(--color-bg)] p-3 overflow-hidden flex items-start">
             <canvas
               ref={canvasRef}
               width={1100} height={420}
@@ -492,19 +536,20 @@ export default function App() {
         </div>
 
         {/* ── Right sidebar ── */}
-        <div className="w-[340px] xl:w-[390px] shrink-0 flex flex-col min-h-0 overflow-hidden bg-[var(--color-bg2)]">
+        <div className="w-[340px] xl:w-[390px] shrink-0 flex flex-col min-h-0 overflow-hidden bg-[var(--color-bg)] border-l border-[var(--color-border)]">
           <button
             onClick={() => setShowFleetModal(true)}
-            className="flex items-center gap-2 px-3.5 py-2 bg-[var(--color-card)] border-b border-[var(--color-border)] shrink-0 hover:bg-[#111827] transition-colors cursor-pointer text-left"
+            className="flex items-center gap-2.5 px-4 py-3 bg-[var(--color-card)] border-b border-[var(--color-border)] shrink-0 hover:bg-slate-700/50/50 transition-colors cursor-pointer text-left group"
           >
             <span className="w-1.5 h-1.5 rounded-full shrink-0"
-              style={{ background: s.drones.some(d => d.state !== 'idle') ? '#f59e0b' : '#14b8a6' }} />
-            <span className="text-[9px] font-bold text-[var(--color-txt2)] uppercase tracking-[0.12em]">Fleet Status</span>
-            <span className="text-[8px] text-[var(--color-txt3)] font-[var(--font-mono)]">
+              style={{ background: s.drones.some(d => d.state !== 'idle') ? '#B45309' : '#14b8a6' }} />
+            <span className="text-[11px] font-semibold text-slate-100 tracking-tight">Fleet status</span>
+            <span className="text-slate-700 text-[10px]">/</span>
+            <span className="text-[10px] text-slate-500 font-mono tabular-nums">
               {s.drones.filter(d => d.state !== 'idle').length}/{s.drones.length} active
             </span>
-            <span className="ml-auto flex items-center gap-1 text-[8.5px] font-bold uppercase tracking-wider text-[var(--color-accent)]">
-              View <span className="text-[10px] leading-none">▸</span>
+            <span className="ml-auto flex items-center gap-1 text-[10px] font-medium text-slate-400 group-hover:text-slate-200 transition-colors">
+              View <span className="text-[11px] leading-none">›</span>
             </span>
           </button>
           <SOSPanel state={s} />
@@ -531,13 +576,13 @@ export default function App() {
             <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--color-border)] shrink-0 bg-gradient-to-b from-[#0a0e1a] to-[var(--color-bg)]">
               <div className="flex items-center gap-2.5">
                 <span className="w-2 h-2 rounded-full"
-                  style={{ background: s.drones.some(d => d.state !== 'idle') ? '#f59e0b' : '#14b8a6' }} />
+                  style={{ background: s.drones.some(d => d.state !== 'idle') ? '#B45309' : '#14b8a6' }} />
                 <span className="text-[12px] font-extrabold text-[var(--color-white)] tracking-tight">Fleet Status</span>
                 <span className="text-[9px] text-[var(--color-txt3)] uppercase tracking-widest">Drone telemetry</span>
               </div>
               <button
                 onClick={() => setShowFleetModal(false)}
-                className="w-8 h-8 flex items-center justify-center rounded-md border border-[var(--color-border2)] text-[var(--color-txt2)] hover:bg-[#1a2540] hover:text-white cursor-pointer transition-colors text-[13px] font-bold"
+                className="w-8 h-8 flex items-center justify-center rounded-md border border-[var(--color-border2)] text-[var(--color-txt2)] hover:bg-[var(--color-border2)] hover:text-white cursor-pointer transition-colors text-[13px] font-bold"
               >
                 ✕
               </button>
