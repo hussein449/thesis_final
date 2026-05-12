@@ -206,7 +206,7 @@ export default function DetectionPage() {
               <div className="text-[13px] font-semibold text-slate-200 leading-tight truncate">
                 Detection engine
               </div>
-              <div className="text-[9px] text-slate-600 mt-0.5 truncate">Beirut · 6 corridors</div>
+              <div className="text-[9px] text-slate-600 mt-0.5 truncate">M51 · Khalde → Sour</div>
             </div>
           )}
           <button
@@ -308,7 +308,7 @@ export default function DetectionPage() {
                 <span style={{ color: POLICIES.uniform.color }} className="font-semibold">Uniform</span>
                 {' '}versus{' '}
                 <span style={{ color: POLICIES.riskAware.color }} className="font-semibold">Risk-aware</span>
-                {' '}drone allocation on Beirut corridors using Poisson accident arrivals,
+                {' '}drone allocation on the M51 Khalde→Sour corridor using Poisson accident arrivals,
                 back-and-forth patrol, and sensing-range detection.
                 Configure the sweep below, then click <strong className="text-slate-300">Run sweep</strong> in the sidebar.
                 Results populate the analysis sections automatically.

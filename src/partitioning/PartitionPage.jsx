@@ -436,13 +436,13 @@ export default function PartitionPage({ droneCount, onDroneCountChange }) {
             <SectionHeader
               icon="⬡"
               title="Map & Corridors"
-              description="Beirut road network with drone allocation visualised as line width. Toggle heatmap mode to colour corridors by risk score."
+              description="M51 South Coastal Highway (Khalde → Sour) with drone allocation visualised as line width. Toggle heatmap mode to colour the corridor by risk score."
             />
             <div className="grid grid-cols-1 lg:grid-cols-[1fr_420px] gap-5">
               <div className="rounded-2xl ring-1 ring-slate-600/80 bg-slate-700/40 overflow-hidden flex flex-col">
                 <div className="flex items-center gap-2.5 px-5 py-3 border-b border-slate-600/70">
                   <span className="w-1.5 h-1.5 rounded-full bg-blue-800" />
-                  <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-200">Beirut corridors</span>
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-200">M51 South Highway</span>
                   <span className="text-slate-700 text-[10px]">/</span>
                   <span className="text-[10px] text-slate-500">
                     {heatmap ? 'Heatmap — colour = risk (green → red)' : 'Identity — colour = road · width = drones'}
