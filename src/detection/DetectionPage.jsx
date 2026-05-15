@@ -353,12 +353,17 @@ export default function DetectionPage() {
             availabilityByPolicy={availabilityByPolicy ?? {}}
             selectedN={selectedN}
             onSelectN={setSelectedN}
+            params={config.params}
           />
         )}
 
         {/* ── Sensitivity analysis ── */}
         {activeSection === 'sensitivity' && (
-          <SensitivityPlots />
+          <SensitivityPlots
+            fleetSizes={counts}
+            trialsPerPoint={config.trialsPerPoint}
+            params={config.params}
+          />
         )}
 
         {/* ── Allocation table ── */}

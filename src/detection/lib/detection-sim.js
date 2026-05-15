@@ -141,12 +141,12 @@ export const DEFAULT_PARAMS = {
   maxDetectionWindow: 600,   // s
 
   // Battery model (Step 3 — integrated operational simulation)
-  // [SPEC] Typical 5000 mAh / 14.8 V LiPo on a commercial quadcopter sustains
-  //         ~25 minutes of mixed flight (DJI Mavic 3 datasheet, see above).
-  //         A linear drain of (100/1500) %/s ≈ 0.0667 %/s discharges from
-  //         100 % to 0 % in 1500 s = 25 min, matching the spec.
+  // [DESIGN] 3 % per minute = 0.05 %/s → 100 % discharges in ~33 min,
+  //         a touch longer than the DJI Mavic 3's 25-min datasheet
+  //         figure but realistic for a payload-light surveillance UAV
+  //         (no heavy gimbal, conservative cruise).
   enableOperational: true,
-  batteryDrainRate: 100 / 1500,  // %/s while patrolling
+  batteryDrainRate: 3 / 60,       // %/s while patrolling  (= 3 %/min)
   // [DESIGN] return-to-dock and ready-to-deploy thresholds. 25 % gives a
   //         comfortable margin to ferry back to the dock without forcing an
   //         emergency landing; 80 % avoids redeploying a barely-charged drone.

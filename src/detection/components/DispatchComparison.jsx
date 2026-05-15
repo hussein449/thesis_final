@@ -32,14 +32,19 @@ const DISPATCH_STRATEGIES = [
 const grid = '#1e293b'
 const textColor = '#64748b'
 
+// Hard caps to keep the tab responsive even if Configure has 100 trials
+// or a 30-day window. Smaller Configure values are respected verbatim.
+const MAX_TOTAL_TIME = 7 * 86400  // 7 days
+const MAX_TRIALS = 10
+
 // Uses the fleet sizes, trials-per-point, and sim params from the
-// Configure page. Allocation is fixed to risk-aware (the standard
-// baseline) — only the dispatch rule varies here. Patrol segmentation
-// follows the risk-aware policy's patrolMode.
+// Configure page (clamped above). Allocation is fixed to risk-aware
+// (the standard baseline) — only the dispatch rule varies here.
 function computeDispatchSweep({ fleetSizes, trialsPerPoint, params }) {
   const fullParams = {
     ...DEFAULT_PARAMS,
     ...params,
+    totalTime: Math.min(params?.totalTime ?? MAX_TOTAL_TIME, MAX_TOTAL_TIME),
     patrolMode: POLICIES.riskAware.patrolMode ?? 'risk-aware',
   }
   return fleetSizes.map((N) => {
@@ -87,7 +92,10 @@ export default function DispatchComparison({ fleetSizes, trialsPerPoint, params 
   const safeFleetSizes = (fleetSizes && fleetSizes.length > 0)
     ? fleetSizes
     : [3, 5, 7, 10, 15, 20]
-  const safeTrials = trialsPerPoint && trialsPerPoint > 0 ? trialsPerPoint : 10
+  const safeTrials = Math.min(
+    trialsPerPoint && trialsPerPoint > 0 ? trialsPerPoint : MAX_TRIALS,
+    MAX_TRIALS,
+  )
   const safeParams = params ?? {}
   // Cheap stable key — avoids re-running the sweep on unrelated parent
   // re-renders while still picking up config changes.
@@ -111,7 +119,10 @@ export default function DispatchComparison({ fleetSizes, trialsPerPoint, params 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [depKey])
 
-  const totalTimeSec = safeParams.totalTime ?? DEFAULT_PARAMS.totalTime
+  const totalTimeSec = Math.min(
+    safeParams.totalTime ?? DEFAULT_PARAMS.totalTime,
+    MAX_TOTAL_TIME,
+  )
   const simDays = totalTimeSec / 86400
   const durLabel = simDays >= 1
     ? `${simDays.toFixed(simDays >= 10 ? 0 : 1)} simulated day${simDays === 1 ? '' : 's'}`

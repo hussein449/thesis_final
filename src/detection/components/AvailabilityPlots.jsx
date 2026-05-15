@@ -116,18 +116,25 @@ const BATTERY_FLEET_OPTIONS = [5, 10, 20]
 // global DEFAULT_PARAMS.totalTime is set to (30 days for sweeps).
 const BATTERY_TRACE_HOURS = 4
 
-function BatteryEvolutionChart() {
+function BatteryEvolutionChart({ params }) {
   const [fleetN, setFleetN] = useState(10)
 
+  // Pass the user's config params through (drain rate, low/ready
+  // thresholds, dock transit / charge time, drone speed) so changes to
+  // any of them re-render this chart. The 4-hour window is the only
+  // hard override — long enough to see several cycles, short enough to
+  // run instantly regardless of Configure's totalTime.
+  const paramsKey = JSON.stringify(params ?? {})
   const traces = useMemo(() => {
     const allocation = allocateDrones(fleetN)
     return simulateBatteryTrace({
       allocation,
-      params: { totalTime: BATTERY_TRACE_HOURS * 3600 },
+      params: { ...(params ?? {}), totalTime: BATTERY_TRACE_HOURS * 3600 },
       seed: 42,
       sampleInterval: 60,
     })
-  }, [fleetN])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fleetN, paramsKey])
 
   const data = useMemo(() => {
     if (!traces.length) return []
@@ -237,6 +244,7 @@ export default function AvailabilityPlots({
   availabilityByPolicy,
   selectedN,
   onSelectN,
+  params,
 }) {
   const policies = Object.keys(availabilityByPolicy ?? {})
   const droneCounts = (results?.[policies[0]] ?? []).map((p) => p.N)
@@ -248,7 +256,7 @@ export default function AvailabilityPlots({
 
   return (
     <div className="space-y-4">
-      <BatteryEvolutionChart />
+      <BatteryEvolutionChart params={params} />
 
       {policies.length === 0 ? (
         <div className="text-[11px] text-[var(--color-txt2)] p-6 text-center rounded-xl border border-[var(--color-border)]">

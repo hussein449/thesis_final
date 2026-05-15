@@ -13,8 +13,12 @@ import {
 import { simulateOnce, DEFAULT_PARAMS } from '../lib/detection-sim'
 import { POLICIES } from '../lib/policies'
 
-const FIXED_N = 10
-const TRIALS = 10
+// Hard caps for the per-tab sweep so the page stays responsive even if
+// Configure has 100 trials × 30-day windows. These are the *upper* limits
+// — smaller Configure values are respected verbatim.
+const MAX_TOTAL_TIME = 7 * 86400   // 7 days
+const MAX_TRIALS = 10
+const FALLBACK_N = 10
 
 // ── Parameter sweep definitions ──────────────────────────────────────────────
 const SWEEPS = [
@@ -59,23 +63,29 @@ const SWEEPS = [
 const grid = '#1e293b'
 const textColor = '#64748b'
 
-// Run sensitivity sweep synchronously. Each trial is 7 simulated days at
-// the corridor's real ~200 accidents/yr → ~4 expected events per trial,
-// × TRIALS=10 = ~40 events per (sweep value, policy) — enough signal to
-// see the parameter's effect on T_alert without locking the browser too
-// long.
-const SWEEP_TOTAL_TIME = 7 * 86400
-function computeSweep(sweep) {
+// Run sensitivity sweep synchronously. The Configure-page `params` are
+// used as the baseline for every "held-fixed" parameter; only the swept
+// variable overrides them. Trial count and trial length are clamped so
+// the synchronous sweep can't choke the browser on a 100-trial × 30-day
+// Configure setup.
+function computeSweep(sweep, { trialsPerPoint, totalTime, fixedN, baseParams }) {
   const results = []
   for (const v of sweep.values) {
-    const params = { ...DEFAULT_PARAMS, [sweep.key]: v, totalTime: SWEEP_TOTAL_TIME }
+    // Baseline = DEFAULT_PARAMS + user's Configure params, then override
+    // the swept variable and clamp totalTime for this view.
+    const params = {
+      ...DEFAULT_PARAMS,
+      ...baseParams,
+      [sweep.key]: v,
+      totalTime,
+    }
     const row = { v }
     for (const pKey of ['uniform', 'riskAware']) {
-      const allocation = POLICIES[pKey].allocate(FIXED_N)
+      const allocation = POLICIES[pKey].allocate(fixedN)
       const trialParams = { ...params, patrolMode: POLICIES[pKey].patrolMode ?? 'uniform' }
       let totalDt = 0
       let count = 0
-      for (let t = 0; t < TRIALS; t++) {
+      for (let t = 0; t < trialsPerPoint; t++) {
         const r = simulateOnce({ allocation, params: trialParams, seed: 42 + t * 31 })
         r.detectionTimes.forEach((dt) => { totalDt += dt; count++ })
       }
@@ -185,10 +195,27 @@ function SweepChart({ sweep, data }) {
   )
 }
 
-export default function SensitivityPlots() {
+export default function SensitivityPlots({ fleetSizes, trialsPerPoint, params }) {
+  // Use the median of the user's fleet sizes as the held-fixed N, falling
+  // back to 10 if none provided.
+  const fixedN = (fleetSizes && fleetSizes.length > 0)
+    ? fleetSizes[Math.floor(fleetSizes.length / 2)]
+    : FALLBACK_N
+  const safeTrials = Math.min(Math.max(1, trialsPerPoint ?? MAX_TRIALS), MAX_TRIALS)
+  const safeTotalTime = Math.min(params?.totalTime ?? MAX_TOTAL_TIME, MAX_TOTAL_TIME)
+  const baseParams = params ?? {}
+  const depKey = `${fixedN}|${safeTrials}|${safeTotalTime}|${JSON.stringify(baseParams)}`
+
   const sweepData = useMemo(() => {
-    return SWEEPS.map((sweep) => ({ sweep, data: computeSweep(sweep) }))
-  }, [])
+    const opts = {
+      trialsPerPoint: safeTrials,
+      totalTime: safeTotalTime,
+      fixedN,
+      baseParams,
+    }
+    return SWEEPS.map((sweep) => ({ sweep, data: computeSweep(sweep, opts) }))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [depKey])
 
   return (
     <div className="space-y-4">
@@ -198,9 +225,10 @@ export default function SensitivityPlots() {
           Sensitivity Analysis — one parameter at a time
         </div>
         <div className="text-[11px] text-[var(--color-txt3)] leading-relaxed max-w-3xl">
-          Each chart varies one operational parameter while holding all others at their default value
-          (N&nbsp;=&nbsp;{FIXED_N}, {TRIALS} Monte Carlo trials per point, sim time 30 min).
-          The amber dashed line marks the default value used in the main sweep.
+          Each chart varies one parameter while holding the others at the Configure values
+          (N&nbsp;=&nbsp;{fixedN}, {safeTrials} trials per point,&nbsp;
+          {(safeTotalTime / 86400).toFixed(1)}-day window).
+          The amber dashed line marks each parameter's reference value.
           Both allocation policies are shown to reveal where Risk-aware outperforms Uniform.
         </div>
         <div className="mt-3 flex flex-wrap gap-4 text-[10px] text-[var(--color-txt3)]">
@@ -227,7 +255,7 @@ export default function SensitivityPlots() {
             <div className="text-[var(--color-txt3)]">
               <span className="text-slate-300 font-mono">x</span> — value of the swept parameter.
               <span className="text-slate-300 font-mono ml-2">y</span> — mean detection time (s),
-              averaged over {TRIALS} Monte Carlo trials × all detected accidents.
+              averaged over {safeTrials} Monte Carlo trials × all detected accidents.
             </div>
             <div className="text-[var(--color-txt3)] mt-2">
               Two curves per chart: <span style={{ color: POLICIES.uniform.color }} className="font-semibold">Uniform</span> and
@@ -240,11 +268,11 @@ export default function SensitivityPlots() {
               Held-fixed parameters
             </div>
             <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 font-mono text-[10px] text-slate-300">
-              <span className="text-slate-500">N</span><span>{FIXED_N} drones</span>
-              <span className="text-slate-500">trials/point</span><span>{TRIALS}</span>
-              <span className="text-slate-500">sim time</span><span>1800 s (30 min)</span>
+              <span className="text-slate-500">N</span><span>{fixedN} drones</span>
+              <span className="text-slate-500">trials/point</span><span>{safeTrials}</span>
+              <span className="text-slate-500">sim time</span><span>{(safeTotalTime / 86400).toFixed(1)} days</span>
               <span className="text-slate-500">seed base</span><span>42 (deterministic)</span>
-              <span className="text-slate-500">accident model</span><span>Poisson per road</span>
+              <span className="text-slate-500">accident model</span><span>section-time Poisson (real rate)</span>
             </div>
           </div>
         </div>
