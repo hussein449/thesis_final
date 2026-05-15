@@ -13,50 +13,49 @@ import {
 import { simulateOnce, DEFAULT_PARAMS } from '../lib/detection-sim'
 import { POLICIES } from '../lib/policies'
 
-// Hard caps for the per-tab sweep so the page stays responsive even if
-// Configure has 100 trials × 30-day windows. These are the *upper* limits
-// — smaller Configure values are respected verbatim.
-const MAX_TOTAL_TIME = 7 * 86400   // 7 days
-const MAX_TRIALS = 10
+// Hard caps for the per-tab sweep so the page stays responsive even on
+// 30-day / 100-trial Configure setups. Smaller Configure values are
+// respected verbatim.
+const MAX_TOTAL_TIME = 2 * 86400   // 2 days
+const MAX_TRIALS = 5
 const FALLBACK_N = 10
 
 // ── Parameter sweep definitions ──────────────────────────────────────────────
-// `defaultVal` is intentionally OMITTED here — it's resolved per render
-// from the user's Configure values, with DEFAULT_PARAMS as a fallback.
-// That keeps the "default" reference line and the "(def. X)" label
-// in sync with whatever the user set on the Configure page.
+// `defaultVal` is intentionally OMITTED — it's resolved per render from
+// the user's Configure values, with DEFAULT_PARAMS as a fallback. That
+// keeps the amber "Configure" reference line and the header value in
+// sync with whatever the user set on the Configure page.
+//
+// 4 values per sweep keeps the total compute around 4 sweeps × 4 values
+// × 2 policies × 5 trials × 2-day = 5.5M iterations (~1 s synchronous).
 const SWEEPS = [
   {
     key: 'droneSpeed',
     label: 'Patrol speed',
     unit: 'm/s',
-    values: [6, 8, 10, 12, 15, 18, 21],
-    description:
-      'Faster drones cover their segment more frequently, reducing the gap between patrols.',
+    values: [6, 12, 18, 21],
+    description: 'Faster drones cover their segment more frequently.',
   },
   {
     key: 'simStartHour',
     label: 'Trial start hour',
     unit: 'h',
-    values: [0, 3, 6, 8, 10, 14, 18, 22],
-    description:
-      'Hour of day (0–23) at which the trial window begins. Different time slots (00–06, 06–10, 10–16, 16–20, 20–24) weight T / C / M differently and shift the spatial accident distribution.',
+    values: [0, 8, 14, 20],
+    description: 'Hour-of-day baseline. Different time slots reweight T / C / M.',
   },
   {
     key: 'lowBatteryThreshold',
     label: 'Dock threshold',
     unit: '%',
-    values: [10, 15, 20, 25, 30, 35, 40],
-    description:
-      'Battery level at which a drone returns to dock. Higher threshold → drones dock sooner → more gaps.',
+    values: [10, 20, 30, 40],
+    description: 'Battery % at which a drone returns to dock. Higher → docks sooner.',
   },
   {
     key: 'sensingRange',
     label: 'IoT range R_IoT',
     unit: 'm',
-    values: [50, 100, 150, 200, 250, 300, 350],
-    description:
-      'IoT communication range. The accident enters detection when a candidate UAV reaches the signal zone [s_k − R_IoT, s_k + R_IoT]. Wider range → smaller T_alert.',
+    values: [100, 200, 300, 400],
+    description: 'IoT comms range. Wider → drone enters the signal zone sooner.',
   },
 ]
 
@@ -248,51 +247,6 @@ export default function SensitivityPlots({ fleetSizes, trialsPerPoint, params })
               <span className="text-amber-700/70">(Configure: {s.defaultVal})</span>
             </div>
           ))}
-        </div>
-      </div>
-
-      {/* What is plotted & params explainer */}
-      <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-card)] px-5 py-4">
-        <div className="text-[10px] text-[var(--color-txt2)] uppercase tracking-widest font-semibold mb-2">
-          What is plotted &amp; how to read it
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-[10.5px] leading-relaxed">
-          <div>
-            <div className="text-[9.5px] uppercase tracking-wider text-slate-500 font-semibold mb-1">
-              Axes
-            </div>
-            <div className="text-[var(--color-txt3)]">
-              <span className="text-slate-300 font-mono">x</span> — value of the swept parameter.
-              <span className="text-slate-300 font-mono ml-2">y</span> — mean detection time (s),
-              averaged over {safeTrials} Monte Carlo trials × all detected accidents.
-            </div>
-            <div className="text-[var(--color-txt3)] mt-2">
-              Two curves per chart: <span style={{ color: POLICIES.uniform.color }} className="font-semibold">Uniform</span> and
-              <span style={{ color: POLICIES.riskAware.color }} className="font-semibold ml-1">Risk-aware</span>.
-              The amber dashed vertical line marks the default value held fixed in every other sweep.
-            </div>
-          </div>
-          <div>
-            <div className="text-[9.5px] uppercase tracking-wider text-slate-500 font-semibold mb-1">
-              Held-fixed parameters
-            </div>
-            <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 font-mono text-[10px] text-slate-300">
-              <span className="text-slate-500">N</span><span>{fixedN} drones</span>
-              <span className="text-slate-500">trials/point</span><span>{safeTrials}</span>
-              <span className="text-slate-500">sim time</span><span>{(safeTotalTime / 86400).toFixed(1)} days</span>
-              <span className="text-slate-500">seed base</span><span>42 (deterministic)</span>
-              <span className="text-slate-500">accident model</span><span>section-time Poisson (real rate)</span>
-            </div>
-          </div>
-        </div>
-        <div className="mt-3 text-[9.5px] text-[var(--color-txt3)] leading-relaxed">
-          <span className="text-[var(--color-txt2)] font-semibold">Swept parameters: </span>
-          <span className="font-mono text-slate-300">droneSpeed</span> (patrol speed),
-          <span className="font-mono text-slate-300 ml-1">simStartHour</span> (time-of-day slot),
-          <span className="font-mono text-slate-300 ml-1">lowBatteryThreshold</span> (return-to-dock trigger),
-          <span className="font-mono text-slate-300 ml-1">sensingRange</span> (IoT communication range R<sub>IoT</sub>).
-          Each is varied independently while the other three stay at their defaults — so each chart
-          isolates the effect of a single parameter.
         </div>
       </div>
 
