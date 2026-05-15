@@ -100,8 +100,17 @@ export function makeRng(seed) {
  */
 export const DEFAULT_PARAMS = {
   // Time discretization
-  dt: 1.0,                   // [DESIGN] seconds per simulation step
-  totalTime: 3600,           // [DESIGN] 1 hour of simulated operation per trial
+  // [DESIGN] 5 s per step is far smaller than any state-machine transition
+  //         (~30 s docking, 25 min battery cycle) and gives 12 m of drone
+  //         motion per step (much smaller than typical 5 km patrol
+  //         segments). Coarser than 1 s so a multi-day real-rate sim
+  //         finishes in seconds, not minutes.
+  dt: 5.0,                   // s per simulation step
+  // [DESIGN] 30 simulated days per trial. With the corridor at 200
+  //         accidents/yr (real, no multiplier) this yields ~16 events
+  //         per trial — enough Monte-Carlo statistics without leaning
+  //         on a stress factor.
+  totalTime: 2592000,        // s — 30 days
 
   // Drone kinematics
   // [SPEC] DJI Mavic 3 Enterprise specs: 21 m/s max horizontal speed,
@@ -111,15 +120,11 @@ export const DEFAULT_PARAMS = {
   //         with sustained patrol on a battery budget.
   droneSpeed: 12,            // m/s
 
-  // [LIT/DESIGN] In the IoT-alert model (§9-§12 of the simplified-model
-  //         report) this is the IoT communication range R_IoT, not an
-  //         optical sensing radius. The ground IoT sensor near the accident
-  //         transmits an alert; the UAV receives it when it enters the
-  //         signal zone [s_k - R_IoT, s_k + R_IoT]. 200 m matches the
-  //         optical sensing radius from the prior model, so detection
-  //         statistics stay comparable until tuned.
-  sensingRange: 200,         // m (== R_IoT for the IoT alert model)
-  iotRange: DEFAULT_R_IOT,   // alias, in case callers prefer the IoT term
+  // [LIT/DESIGN] IoT communication range R_IoT from the §9-§12 alert
+  //         model. The ground IoT sensor near the accident transmits;
+  //         the UAV receives when it enters [s_k - R_IoT, s_k + R_IoT].
+  //         200 m is the canonical default; tune per the deployed radio.
+  sensingRange: 200,         // m — R_IoT for the IoT alert model
 
   // §6 — UAV patrol segmentation mode. 'uniform' divides the corridor
   // into M equal-length segments; 'risk-aware' groups 1-km sections so
@@ -166,18 +171,13 @@ export const DEFAULT_PARAMS = {
 
   // Accident generation — section-time-slot Poisson model (§4-§5 of the
   // simplified-model report). For each road:
-  //   d_total/day        = (accidents × accidentRateMultiplier) / 365
+  //   d_total/day        = accidents / 365         (REAL rate, no multiplier)
   //   λ_{i,b}/day        = (d_total/B) · P(i|b)
   //   N_{i,b}(d)         ~ Poisson(λ_{i,b}/day)
   //   τ_k ~ U(t_b_start, t_b_end);  s_k ~ U(s_i_start, s_i_end)
   //
-  // accidentRateMultiplier acts on d_total (uniform across slots).
   // simStartHour sets where the trial window starts in the day, which
   // determines which time slot(s) the trial samples from.
-  accidentRateMultiplier: 30,    // [TUNING] above real-world rates so a 1-hour
-                                 // trial produces statistically meaningful
-                                 // counts; thesis figures should disclose this
-                                 // factor when reporting "trials per fleet size".
   simStartHour: 8,               // [DESIGN] hour of day (0-24) at which a trial
                                  // begins. 8 = morning rush (slot 2). The 5
                                  // time slots are 00-06, 06-10, 10-16, 16-20,
@@ -211,14 +211,16 @@ function getRoadRiskModel(road) {
 
 /**
  * Generate the accident schedule for one trial using the section-time-slot
- * Poisson model.
+ * Poisson model at REAL-WORLD rates (no stress multiplier).
  *
  * For each road in `roadStates`:
- *   1. Look up its cached risk + rate model.
- *   2. Scale every λ_{i,b} by params.accidentRateMultiplier (stress factor).
- *   3. Sample Poisson events for each day that intersects the trial window
- *      [simStartHour, simStartHour + totalTime/3600).
- *   4. Convert each event:
+ *   1. Look up its cached risk + rate model (λ_{i,b}/day already encodes
+ *      accidents/365 × P(i|b), per §4 of the report).
+ *   2. Sample Poisson events for each day that intersects the trial window
+ *      [simStartHour, simStartHour + totalTime/3600). With trial windows
+ *      now defaulting to multiple days, real-world rates yield enough
+ *      events for sound Monte Carlo statistics without a stress factor.
+ *   3. Convert each event:
  *        time          = (globalHour − simStartHour) × 3600   (seconds)
  *        s (meters)    = e.s × 1000                          (km → m)
  *      plus extra fields {sectionIndex, timeSlot, tau} for downstream UIs
@@ -233,20 +235,12 @@ function generateAccidentSchedule(roadStates, params, rng) {
   const endHour = startHour + totalHours
   const startDay = Math.floor(startHour / 24)
   const endDay = Math.floor(endHour / 24)
-  const mult = params.accidentRateMultiplier ?? 1
   const events = []
   for (let r = 0; r < roadStates.length; r++) {
     const rs = roadStates[r]
     const model = getRoadRiskModel(rs.road)
-    // Apply the stress multiplier per (section, slot).
-    const scaledRate = model.rateMatrix.map((row) => ({
-      sectionIndex: row.sectionIndex,
-      sStart: row.sStart,
-      sEnd: row.sEnd,
-      lambda: row.lambda.map((l) => l * mult),
-    }))
     for (let d = startDay; d <= endDay; d++) {
-      const dayEvents = generateAccidentsForDay(scaledRate, d, rng)
+      const dayEvents = generateAccidentsForDay(model.rateMatrix, d, rng)
       for (const e of dayEvents) {
         const globalHour = d * 24 + e.tau
         if (globalHour < startHour || globalHour >= endHour) continue
@@ -470,7 +464,7 @@ export function simulateOnce({ allocation, params, seed }) {
         segments: rs.segments,
         uavStates,
         sk: acc.s,
-        R_IoT: P.sensingRange ?? P.iotRange ?? DEFAULT_R_IOT,
+        R_IoT: P.sensingRange ?? DEFAULT_R_IOT,
         v: P.droneSpeed,
         t,
       })
@@ -756,7 +750,7 @@ export function simulateDetailedLog({ allocation, params, seed, sampleInterval =
         segments: rs.segments,
         uavStates,
         sk: acc.s,
-        R_IoT: P.sensingRange ?? P.iotRange ?? DEFAULT_R_IOT,
+        R_IoT: P.sensingRange ?? DEFAULT_R_IOT,
         v: P.droneSpeed,
         t,
       })

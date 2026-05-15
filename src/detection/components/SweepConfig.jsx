@@ -100,12 +100,12 @@ export default function SweepConfig({
 
       <div className="p-5">
 
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <TextField
-          label="Drone counts"
+          label="Drone counts (M)"
           value={config.droneCountsText}
           onChange={(v) => setField('droneCountsText', v)}
-          hint="comma-separated"
+          hint="comma-separated, e.g. 1, 2, 3, 5, …, 20"
         />
         <NumberField
           label="Trials per point"
@@ -116,12 +116,13 @@ export default function SweepConfig({
           max={200}
         />
         <NumberField
-          label="Sim time (min)"
-          value={Math.round(params.totalTime / 60)}
-          onChange={(v) => setParam('totalTime', Math.max(60, v * 60))}
-          hint="per trial"
-          min={1}
-          max={120}
+          label="Sim duration (days)"
+          value={+(params.totalTime / 86400).toFixed(2)}
+          onChange={(v) => setParam('totalTime', Math.max(3600, v * 86400))}
+          hint="per trial · real-rate (no multiplier)"
+          step={0.5}
+          min={0.04}
+          max={365}
         />
         <NumberField
           label="Trial start hour"
@@ -130,14 +131,6 @@ export default function SweepConfig({
           hint="time-of-day slot (0–23)"
           min={0}
           max={23}
-        />
-        <NumberField
-          label="Accident multiplier"
-          value={params.accidentRateMultiplier}
-          onChange={(v) => setParam('accidentRateMultiplier', v)}
-          hint="× real-world rate"
-          min={1}
-          max={500}
         />
       </div>
 
@@ -151,16 +144,17 @@ export default function SweepConfig({
       </div>
 
       {showAdvanced && (
-        <div className="mt-4 pt-4 border-t border-slate-600/70 grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="mt-4 pt-4 border-t border-slate-600/70 grid grid-cols-2 lg:grid-cols-3 gap-3">
           <NumberField
             label="IoT range R_IoT (m)"
             value={params.sensingRange}
             onChange={(v) => setParam('sensingRange', v)}
+            hint="UAV receives alert in [s_k − R, s_k + R]"
             min={20}
             max={1000}
           />
           <NumberField
-            label="Drone speed (m/s)"
+            label="Drone speed v (m/s)"
             value={params.droneSpeed}
             onChange={(v) => setParam('droneSpeed', v)}
             min={1}
@@ -170,6 +164,7 @@ export default function SweepConfig({
             label="Battery drain (%/s)"
             value={params.batteryDrainRate}
             onChange={(v) => setParam('batteryDrainRate', v)}
+            hint="only when battery model is on"
             step={0.001}
             min={0}
             max={1}
@@ -194,21 +189,6 @@ export default function SweepConfig({
             onChange={(v) => setParam('dockTransitTime', v)}
             min={0}
             max={600}
-          />
-          <NumberField
-            label="Reserve count"
-            value={params.reserveCount}
-            onChange={(v) => setParam('reserveCount', v)}
-            hint="hot spares for replacement"
-            min={0}
-            max={10}
-          />
-          <NumberField
-            label="Reserve dispatch (s)"
-            value={params.reserveDispatchDelay}
-            onChange={(v) => setParam('reserveDispatchDelay', v)}
-            min={0}
-            max={300}
           />
         </div>
       )}

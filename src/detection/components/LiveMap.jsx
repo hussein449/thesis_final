@@ -64,11 +64,14 @@ function heatColor(t) {
  */
 
 const TIME_SCALE = 30 // 1 second of wall time = 30 simulated seconds
-// Visualisation-only multiplier on top of the user's accidentRateMultiplier
-// so that accidents arrive frequently enough to actually be watched on screen.
+// Visualisation-only multiplier so accidents arrive on a watchable cadence
+// in the Live Trial. Tuned so the corridor's real ~200 accidents/yr produce
+// an event every ~5 wall-seconds at TIME_SCALE = 30:
+//   real rate ≈ 6.3 × 10⁻⁶ events/s; with boost × TIME_SCALE × dt this
+//   gives ~0.2 events per wall-second.
 // The Monte-Carlo sweep does NOT use this — it runs detection-sim.simulateOnce
-// directly with the user's config, unaffected by this constant.
-const DEMO_RATE_BOOST = 20
+// directly with the user's config (real rates, no boost).
+const DEMO_RATE_BOOST = 1200
 // Detected accidents linger for this many sim-seconds (≈2.7 wall-seconds at
 // TIME_SCALE=30), fading over the last DETECTED_FADE_SIM, then are removed
 // from the map. Missed accidents are left in place so the operator can see
@@ -673,10 +676,11 @@ export default function LiveMap({ N, policyKey, params: paramsProp }) {
       const slot = timeSlotForHour(simHour)
       const slotIdx = slot.index - 1
       const slotDurationSec = (slot.endHour - slot.startHour) * 3600
-      // DEMO_RATE_BOOST × accidentRateMultiplier together accelerate the demo
-      // beyond the real-world rate so events arrive on a watchable cadence.
-      const boost = (st.params.accidentRateMultiplier ?? 1) * DEMO_RATE_BOOST
-      const R_IoT = st.params.sensingRange ?? st.params.iotRange ?? DEFAULT_R_IOT
+      // DEMO_RATE_BOOST accelerates the demo beyond the corridor's real
+      // rate so events arrive on a watchable cadence. Monte-Carlo metrics
+      // are unaffected — that path uses simulateOnce() with no boost.
+      const boost = DEMO_RATE_BOOST
+      const R_IoT = st.params.sensingRange ?? DEFAULT_R_IOT
       const v = st.params.droneSpeed
       for (let r = 0; r < st.roadStates.length; r++) {
         const rs = st.roadStates[r]

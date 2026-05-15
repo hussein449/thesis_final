@@ -28,13 +28,13 @@ const SWEEPS = [
       'Faster drones cover their segment more frequently, reducing the gap between patrols.',
   },
   {
-    key: 'accidentRateMultiplier',
-    label: 'Accident rate multiplier',
-    unit: '×',
-    values: [20, 40, 60, 80, 100, 120],
-    defaultVal: DEFAULT_PARAMS.accidentRateMultiplier,
+    key: 'simStartHour',
+    label: 'Trial start hour',
+    unit: 'h',
+    values: [0, 3, 6, 8, 10, 14, 18, 22],
+    defaultVal: DEFAULT_PARAMS.simStartHour,
     description:
-      'Higher multiplier → denser accident schedule. At low rates, chance dominates; at high rates, coverage gaps dominate.',
+      'Hour of day (0–23) at which the trial window begins. Different time slots (00–06, 06–10, 10–16, 16–20, 20–24) weight T / C / M differently and shift the spatial accident distribution.',
   },
   {
     key: 'lowBatteryThreshold',
@@ -245,7 +245,7 @@ export default function SensitivityPlots() {
         <div className="mt-3 text-[9.5px] text-[var(--color-txt3)] leading-relaxed">
           <span className="text-[var(--color-txt2)] font-semibold">Swept parameters: </span>
           <span className="font-mono text-slate-300">droneSpeed</span> (patrol speed),
-          <span className="font-mono text-slate-300 ml-1">accidentRateMultiplier</span> (incident density),
+          <span className="font-mono text-slate-300 ml-1">simStartHour</span> (time-of-day slot),
           <span className="font-mono text-slate-300 ml-1">lowBatteryThreshold</span> (return-to-dock trigger),
           <span className="font-mono text-slate-300 ml-1">sensingRange</span> (IoT communication range R<sub>IoT</sub>).
           Each is varied independently while the other three stay at their defaults — so each chart

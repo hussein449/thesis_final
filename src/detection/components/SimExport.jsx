@@ -4,8 +4,11 @@ import { POLICIES } from '../lib/policies'
 
 const EXPORT_N = 10
 const EXPORT_SEED = 42
-// Higher rate + longer sim → guaranteed meaningful accident records for export
-const EXPORT_PARAMS = { accidentRateMultiplier: 300, totalTime: 3600 }
+// Long real-rate trial so the export contains a useful number of events
+// without any stress multiplier — 60 simulated days at the corridor's
+// historical ~200 accidents/yr yields ≈ 33 expected events.
+const EXPORT_DAYS = 60
+const EXPORT_PARAMS = { totalTime: EXPORT_DAYS * 86400 }
 
 function toCSV(rows) {
   if (!rows.length) return ''
@@ -37,9 +40,9 @@ const FIELD_DESCRIPTIONS = {
   accident_id: 'Sequential ID for each accident event in this trial',
   corridor: 'Road name where the accident occurred',
   time_occurred_s: 'Simulation time (seconds) when accident occurred',
-  status: '"detected" if a drone entered sensing range within the window, else "missed"',
-  detection_time_s: 'Seconds from accident occurrence to drone detection (blank if missed)',
-  responding_uav: 'ID of the drone that detected the accident (blank if missed)',
+  status: '"detected" if any of the {m-1, m, m+1} candidate UAVs reached the IoT signal zone within the window, else "missed"',
+  detection_time_s: 'IoT alert time T_alert in seconds (blank if missed)',
+  responding_uav: 'ID of the UAV that won the min-T_alert race (blank if missed)',
   // drone log
   time_s: 'Simulation timestamp of this sample (seconds)',
   uav_id: 'Drone identifier — format <road_shortName>-<index>',
@@ -83,7 +86,7 @@ export default function SimExport({ params }) {
           Simulation log export
         </div>
         <div className="text-[11px] text-[var(--color-txt3)] leading-relaxed mb-4">
-          One deterministic trial — N = {EXPORT_N}, seed = {EXPORT_SEED}, 60 min simulated at {EXPORT_PARAMS.accidentRateMultiplier}× accident rate.
+          One deterministic trial — N = {EXPORT_N}, seed = {EXPORT_SEED}, {EXPORT_DAYS} simulated days at the corridor's real ~200 accidents/yr.
           Download the accident event log and per-drone state log as CSV or JSON.
         </div>
 
