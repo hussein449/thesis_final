@@ -9,7 +9,7 @@ import SensitivityPlots from './components/SensitivityPlots'
 import DetectionCDFPlots from './components/DetectionCDFPlots'
 import DispatchComparison from './components/DispatchComparison'
 import { DataSources } from '../partitioning/PartitionPage'
-import { runSweep, runDispatchSweep } from './lib/monteCarlo'
+import { runSweep } from './lib/monteCarlo'
 import { POLICIES } from './lib/policies'
 
 const DEFAULT_CONFIG = {
@@ -153,7 +153,6 @@ export default function DetectionPage() {
   const [progress, setProgress] = useState(null)
   const [results, setResults] = useState(null)
   const [availabilityByPolicy, setAvailabilityByPolicy] = useState(null)
-  const [dispatchResults, setDispatchResults] = useState(null)
   const [selectedN, setSelectedN] = useState(10)
   const [livePolicy, setLivePolicy] = useState('riskAware')
   const [activeSection, setActiveSection] = useState('configure')
@@ -167,39 +166,24 @@ export default function DetectionPage() {
     setRunning(true)
     setResults(null)
     setAvailabilityByPolicy(null)
-    setDispatchResults(null)
     setProgress({ done: 0, total: 0 })
     try {
-      // ── Main Monte-Carlo sweep (IoT alert detection model) ─────────
       const { results, availabilityByPolicy } = await runSweep({
         droneCounts: counts,
         trialsPerPoint: config.trialsPerPoint,
         params: config.params,
         onProgress: (done, total) => {
           if (cancelledRef.current) return
-          setProgress({ done, total, phase: 'main' })
+          setProgress({ done, total })
         },
       })
-      if (cancelledRef.current) return
-      setResults(results)
-      setAvailabilityByPolicy(availabilityByPolicy)
-      if (!counts.includes(selectedN) && counts.length > 0)
-        setSelectedN(counts[Math.min(counts.length - 1, Math.floor(counts.length / 2))])
-      setActiveSection('detection')
-
-      // ── Dispatch-strategy sweep (active-response model) ────────────
-      // Uses the same fleet sizes, trials, and params as the main sweep
-      // so the user only configures things once.
-      const dispatch = await runDispatchSweep({
-        droneCounts: counts,
-        trialsPerPoint: config.trialsPerPoint,
-        params: config.params,
-        onProgress: (done, total) => {
-          if (cancelledRef.current) return
-          setProgress({ done, total, phase: 'dispatch' })
-        },
-      })
-      if (!cancelledRef.current) setDispatchResults(dispatch)
+      if (!cancelledRef.current) {
+        setResults(results)
+        setAvailabilityByPolicy(availabilityByPolicy)
+        if (!counts.includes(selectedN) && counts.length > 0)
+          setSelectedN(counts[Math.min(counts.length - 1, Math.floor(counts.length / 2))])
+        setActiveSection('detection')
+      }
     } finally {
       setRunning(false)
     }
@@ -406,9 +390,9 @@ export default function DetectionPage() {
         {/* ── Dispatch comparison ── */}
         {activeSection === 'dispatch' && (
           <DispatchComparison
-            data={dispatchResults}
+            fleetSizes={counts}
+            trialsPerPoint={config.trialsPerPoint}
             params={config.params}
-            running={running}
           />
         )}
 

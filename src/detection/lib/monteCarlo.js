@@ -19,10 +19,8 @@
  * responsive while the sweep runs.
  */
 
-import { simulateOnce, simulateWithDispatch } from './detection-sim'
+import { simulateOnce } from './detection-sim'
 import { POLICIES } from './policies'
-
-const DISPATCH_RULES = ['nearest', 'batteryFirst', 'balanced']
 
 /** Yield to the event loop so the UI can repaint. */
 function nextTick() {
@@ -157,62 +155,4 @@ function median(arr) {
   return sorted.length % 2 === 0
     ? (sorted[mid - 1] + sorted[mid]) / 2
     : sorted[mid]
-}
-
-/**
- * Dispatch-rule sweep. Uses the SAME droneCounts, trialsPerPoint, and
- * params that runSweep() received from the Configure page — so the
- * dispatch comparison reflects the user's settings exactly, and only
- * runs when the user clicks "Run sweep".
- *
- * Allocation is fixed to risk-aware (the standard baseline); patrol
- * segmentation follows the risk-aware policy's patrolMode. Only the
- * dispatch rule varies across the three strategies.
- *
- *   returns: [{ N, nearest_avg, nearest_missedPct, batteryFirst_avg,
- *              batteryFirst_missedPct, balanced_avg, balanced_missedPct }, ...]
- */
-export async function runDispatchSweep({
-  droneCounts,
-  trialsPerPoint,
-  params = {},
-  onProgress = null,
-}) {
-  const totalRuns = droneCounts.length * DISPATCH_RULES.length * trialsPerPoint
-  let done = 0
-  // Inject the risk-aware patrolMode the dispatch model expects.
-  const dispatchParams = {
-    ...params,
-    patrolMode: POLICIES.riskAware.patrolMode ?? 'risk-aware',
-  }
-  const rows = []
-  for (const N of droneCounts) {
-    const allocation = POLICIES.riskAware.allocate(N)
-    const row = { N }
-    for (const rule of DISPATCH_RULES) {
-      let totalDt = 0, count = 0, missed = 0, total = 0
-      for (let trial = 0; trial < trialsPerPoint; trial++) {
-        const seed = 42 + trial * 31 + N * 7919
-        const r = simulateWithDispatch({
-          allocation,
-          params: dispatchParams,
-          seed,
-          dispatchRule: rule,
-        })
-        r.detectionTimes.forEach((dt) => { totalDt += dt; count++ })
-        missed += r.nMissed
-        total += r.nTotal
-        done++
-        if (done % 5 === 0) {
-          onProgress?.(done, totalRuns)
-          await nextTick()
-        }
-      }
-      row[`${rule}_avg`] = count > 0 ? Math.round(totalDt / count) : null
-      row[`${rule}_missedPct`] = total > 0 ? +((missed / total) * 100).toFixed(1) : 0
-    }
-    rows.push(row)
-  }
-  onProgress?.(totalRuns, totalRuns)
-  return rows
 }
