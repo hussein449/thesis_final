@@ -153,7 +153,7 @@ export default function SweepConfig({
       {showAdvanced && (
         <div className="mt-4 pt-4 border-t border-slate-600/70 grid grid-cols-2 lg:grid-cols-4 gap-3">
           <NumberField
-            label="Sensing range (m)"
+            label="IoT range R_IoT (m)"
             value={params.sensingRange}
             onChange={(v) => setParam('sensingRange', v)}
             min={20}

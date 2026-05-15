@@ -47,12 +47,12 @@ const SWEEPS = [
   },
   {
     key: 'sensingRange',
-    label: 'Sensing radius',
+    label: 'IoT range R_IoT',
     unit: 'm',
     values: [50, 100, 150, 200, 250, 300, 350],
     defaultVal: DEFAULT_PARAMS.sensingRange,
     description:
-      'Optical detection radius. A wider cone reduces time-to-detect but depends on camera / altitude.',
+      'IoT communication range. The accident enters detection when a candidate UAV reaches the signal zone [s_k − R_IoT, s_k + R_IoT]. Wider range → smaller T_alert.',
   },
 ]
 
@@ -247,7 +247,7 @@ export default function SensitivityPlots() {
           <span className="font-mono text-slate-300">droneSpeed</span> (patrol speed),
           <span className="font-mono text-slate-300 ml-1">accidentRateMultiplier</span> (incident density),
           <span className="font-mono text-slate-300 ml-1">lowBatteryThreshold</span> (return-to-dock trigger),
-          <span className="font-mono text-slate-300 ml-1">sensingRange</span> (optical detection radius).
+          <span className="font-mono text-slate-300 ml-1">sensingRange</span> (IoT communication range R<sub>IoT</sub>).
           Each is varied independently while the other three stay at their defaults — so each chart
           isolates the effect of a single parameter.
         </div>

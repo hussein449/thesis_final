@@ -66,9 +66,14 @@ export async function runSweep({
       let nUnder2Min = 0
       let availabilitySamples = []
 
+      // The patrol mode is a property of the policy (uniform vs. risk-aware
+      // — see policies.js). Thread it through so the sim builds the right
+      // patrol segments per road.
+      const trialParams = { ...params, patrolMode: policy.patrolMode ?? 'uniform' }
+
       for (let trial = 0; trial < trialsPerPoint; trial++) {
         const seed = baseSeed + trial * 1009 + N * 7919
-        const result = simulateOnce({ allocation, params, seed })
+        const result = simulateOnce({ allocation, params: trialParams, seed })
 
         detectionTimes.push(...result.detectionTimes)
         nDetected += result.nDetected

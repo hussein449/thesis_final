@@ -21,6 +21,8 @@ import {
   computeSlotProbabilities,
   computeSectionTimeSlotRates,
 } from '../../partitioning/lib/accident-generator'
+import { buildPatrolSegments } from '../../partitioning/lib/uav-segments'
+import { computeIotDetection, DEFAULT_R_IOT } from '../lib/iot-alert'
 
 // Deep green → deep amber → deep red gradient — readable against the
 // cream/taupe canvas without the washed-out pastel look of the original.
@@ -159,50 +161,116 @@ function drawSectionGrid(map, rs, sectionLengthKm = DEFAULT_SECTION_LENGTH_KM) {
   return layers
 }
 
-function makeRoadState(allocation, params, rng) {
+// Draw UAV patrol-segment boundaries as wide perpendicular markers, plus a
+// "UAV m" label per segment. Distinct visual language (violet, thicker)
+// from the cyan 1-km highway-section ticks so the two grids don't blur.
+function drawPatrolSegments(map, rs) {
+  const layers = []
+  if (!rs.segments || rs.segments.length === 0) return layers
+  const pathLen = rs.path.totalLength
+
+  // Boundary fences at every segment edge: 0, B_1, B_2, ..., L.
+  const boundaries = [0, ...rs.segments.map((s) => s.B)]
+  for (const sM of boundaries) {
+    const sClamped = Math.min(Math.max(sM, 0), pathLen)
+    const [xc, yc] = positionAt(rs.path, sClamped)
+    const [nx, ny] = perpendicularAt(rs.path, sClamped)
+    const halfM = 260
+    const [latA, lonA] = unprojectMeters(xc + nx * halfM, yc + ny * halfM, rs.path.refLat, rs.path.refLon)
+    const [latB, lonB] = unprojectMeters(xc - nx * halfM, yc - ny * halfM, rs.path.refLat, rs.path.refLon)
+    const fence = L.polyline([[latA, lonA], [latB, lonB]], {
+      color: '#7C3AED',         // violet-600
+      weight: 4,
+      opacity: 0.7,
+      dashArray: '6 6',
+    }).addTo(map)
+    layers.push(fence)
+  }
+
+  // "UAV m" labels centred on each segment.
+  for (const seg of rs.segments) {
+    const midM = (seg.A + seg.B) / 2
+    const [xc, yc] = positionAt(rs.path, Math.min(midM, pathLen))
+    const [nx, ny] = perpendicularAt(rs.path, Math.min(midM, pathLen))
+    const [latL, lonL] = unprojectMeters(xc + nx * 320, yc + ny * 320, rs.path.refLat, rs.path.refLon)
+    const lengthKm = (seg.length / 1000).toFixed(1)
+    const riskNote = seg.riskAverage != null
+      ? `<span style="color:#A78BFA"> · R̄ ${seg.riskAverage.toFixed(2)}</span>`
+      : ''
+    const labelIcon = L.divIcon({
+      html: `<div style="
+        font: 600 11px 'JetBrains Mono', monospace;
+        color: #fff;
+        background: #7C3AED;
+        padding: 2px 8px;
+        border-radius: 9999px;
+        white-space: nowrap;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+        border: 1.5px solid #ffffff66;
+      ">UAV ${seg.index} · ${lengthKm} km${riskNote}</div>`,
+      className: '',
+      iconSize: [120, 22],
+      iconAnchor: [60, 11],
+    })
+    const label = L.marker([latL, lonL], { icon: labelIcon, interactive: false }).addTo(map)
+    layers.push(label)
+  }
+  return layers
+}
+
+function makeRoadState(allocation, params, rng, patrolMode) {
   return allocation.map(({ road, drones: nDrones }) => {
     const path = buildRoadPath(road)
     // Build the section-time-slot rate model for this road.
+    const sections = buildSections(road.lengthKm)
     const scores = defaultSectionScores(road)
     const riskMatrix = computeRiskMatrix(scores)
     const slotProbs = computeSlotProbabilities(riskMatrix)
     const rateMatrix = computeSectionTimeSlotRates(dailyAccidentRate(road.accidents), slotProbs)
 
-    const droneStates = []
-    if (nDrones > 0) {
-      const segLen = path.totalLength / nDrones
-      const segDrainFactor = segmentDrainFactor(segLen)
-      for (let i = 0; i < nDrones; i++) {
-        const segStart = i * segLen
-        const segEnd = (i + 1) * segLen
-        // Stagger initial battery across [35, 100] %. Each drone gets a
-        // random starting charge so their return-to-dock cycles do NOT all
-        // align at t=0 — this prevents the whole fleet hitting the low-
-        // battery threshold simultaneously.
-        const initialBattery = 35 + rng() * 65
-        // Per-drone drain jitter (±12%) on top of the segment-length factor.
-        // Together with the staggered initial battery, this fully
-        // desynchronises charge cycles across the fleet.
-        const drainJitter = 0.88 + rng() * 0.24
-        droneStates.push({
-          id: `${road.id}-${i}`,
-          s: segStart + rng() * segLen,
-          dir: rng() < 0.5 ? 1 : -1,
-          segStart,
-          segEnd,
-          segLen,
-          drainFactor: segDrainFactor * drainJitter,
-          battery: initialBattery,
-          state: 'patrolling',
-          phaseEnd: 0,
+    // §6 patrol segments. Each UAV gets exactly one [A_m, B_m].
+    const segments = nDrones > 0
+      ? buildPatrolSegments({
+          mode: patrolMode ?? 'uniform',
+          corridorLengthM: path.totalLength,
+          M: nDrones,
+          sections,
+          riskMatrix,
         })
-      }
+      : []
+
+    const droneStates = []
+    for (let i = 0; i < segments.length; i++) {
+      const seg = segments[i]
+      const segLen = seg.B - seg.A
+      const segDrainFactor = segmentDrainFactor(segLen)
+      // Stagger initial battery across [35, 100] %. Each drone gets a
+      // random starting charge so their return-to-dock cycles do NOT all
+      // align at t=0 — this prevents the whole fleet hitting the low-
+      // battery threshold simultaneously.
+      const initialBattery = 35 + rng() * 65
+      // Per-drone drain jitter (±12%) on top of the segment-length factor.
+      const drainJitter = 0.88 + rng() * 0.24
+      droneStates.push({
+        id: `${road.id}-${i}`,
+        s: seg.A + rng() * segLen,
+        dir: rng() < 0.5 ? 1 : -1,
+        segStart: seg.A,
+        segEnd: seg.B,
+        segLen,
+        patrolIdx: seg.index,
+        drainFactor: segDrainFactor * drainJitter,
+        battery: initialBattery,
+        state: 'patrolling',
+        phaseEnd: 0,
+      })
     }
     return {
       road,
       path,
+      segments,
       droneStates,
-      rateMatrix,    // [{ sectionIndex, sStart, sEnd, lambda[5] }, …] — per-day, per-slot
+      rateMatrix,
     }
   })
 }
@@ -301,14 +369,16 @@ export default function LiveMap({ N, policyKey, params: paramsProp }) {
   const [running, setRunning] = useState(false)
   const [heatmap, setHeatmap] = useState(false)
   const [showSections, setShowSections] = useState(true)
+  const [showPatrol, setShowPatrol] = useState(true)
 
   // Map + Leaflet refs
   const mapElRef = useRef(null)
   const mapRef = useRef(null)
   const polylineLayerRef = useRef([])
   const sectionLayerRef = useRef([])
+  const patrolLayerRef = useRef([])
   const droneLayerRef = useRef(new Map())     // id -> { marker, prevState }
-  const accidentLayerRef = useRef(new Map())  // id -> { marker, prevStatus }
+  const accidentLayerRef = useRef(new Map())  // id -> { marker, ring, prevStatus }
 
   // Simulation state
   const stateRef = useRef(null)
@@ -320,11 +390,13 @@ export default function LiveMap({ N, policyKey, params: paramsProp }) {
     const allocation = policy.allocate(N)
     const rng = makeRng(Date.now() & 0x7fffffff)
     const params = { ...DEFAULT_PARAMS, ...(paramsProp ?? {}) }
+    const patrolMode = policy.patrolMode ?? 'uniform'
     stateRef.current = {
       simT: 0,
       params,
+      patrolMode,
       allocation,
-      roadStates: makeRoadState(allocation, params, rng),
+      roadStates: makeRoadState(allocation, params, rng, patrolMode),
       accidents: [],
       rng,
       // Cumulative counters — survive the accident-list cap.
@@ -415,6 +487,23 @@ export default function LiveMap({ N, policyKey, params: paramsProp }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showSections, N, policyKey, heatmap])
 
+  // Patrol-segment boundaries (one band per UAV; uniform vs risk-aware).
+  // Rebuilds on N/policy change (and via init's roadStates rebuild).
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+    patrolLayerRef.current.forEach((layer) => layer.remove())
+    patrolLayerRef.current = []
+    if (!showPatrol) return
+    const st = stateRef.current
+    if (!st) return
+    for (const rs of st.roadStates) {
+      const layers = drawPatrolSegments(map, rs)
+      patrolLayerRef.current.push(...layers)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showPatrol, N, policyKey, heatmap])
+
   // Render drone + accident markers reactively (called every frame)
   function syncMarkers() {
     const map = mapRef.current
@@ -482,27 +571,42 @@ export default function LiveMap({ N, policyKey, params: paramsProp }) {
       const [lat, lon] = unprojectMeters(x, y, rs.path.refLat, rs.path.refLon)
       const status = statusOf(acc)
       let entry = accidentLayerRef.current.get(acc.id)
+      const tooltipFor = (s) =>
+        s === 'detected'
+          ? `Detected in ${(acc.detectionTime ?? 0).toFixed(0)}s${acc.responderPatrolIdx ? ` · UAV-${acc.responderPatrolIdx}` : ''}`
+          : s === 'missed' ? 'Missed (no IoT overlap or timeout)'
+          : acc.predictedTAlert != null
+              ? `Pending · ETA ${acc.predictedTAlert.toFixed(0)}s via UAV-${acc.responderPatrolIdx}`
+              : 'Pending · no IoT overlap'
       if (!entry) {
         const marker = L.marker([lat, lon], {
           icon: accidentIcon(status),
           interactive: true,
         }).addTo(map)
-        marker.bindTooltip(
-          status === 'detected'
-            ? `Detected in ${(acc.detectionTime ?? 0).toFixed(0)}s`
-            : status === 'missed' ? 'Missed (timeout)' : 'Pending',
-          { direction: 'top' }
-        )
-        entry = { marker, prevStatus: status }
+        marker.bindTooltip(tooltipFor(status), { direction: 'top' })
+        // §9 IoT signal zone — ring of radius R_IoT around the accident.
+        // Drawn only while pending so it doesn't clutter resolved events.
+        const ring = (status === 'pending' && acc.R_IoT)
+          ? L.circle([lat, lon], {
+              radius: acc.R_IoT,
+              color: '#ef4444',
+              weight: 1.2,
+              opacity: 0.7,
+              fillColor: '#ef4444',
+              fillOpacity: 0.06,
+              interactive: false,
+            }).addTo(map)
+          : null
+        entry = { marker, ring, prevStatus: status }
         accidentLayerRef.current.set(acc.id, entry)
       } else if (entry.prevStatus !== status) {
         entry.marker.setIcon(accidentIcon(status))
-        entry.marker.setTooltipContent(
-          status === 'detected'
-            ? `Detected in ${(acc.detectionTime ?? 0).toFixed(0)}s`
-            : status === 'missed' ? 'Missed (timeout)' : 'Pending'
-        )
+        entry.marker.setTooltipContent(tooltipFor(status))
         entry.prevStatus = status
+        if (status !== 'pending' && entry.ring) {
+          entry.ring.remove()
+          entry.ring = null
+        }
       }
 
       // Fade detected markers over the last DETECTED_FADE_SIM seconds of
@@ -517,9 +621,10 @@ export default function LiveMap({ N, policyKey, params: paramsProp }) {
       }
     }
     // Drop accident markers that no longer exist (we cap the list above)
-    for (const [id, { marker }] of accidentLayerRef.current) {
+    for (const [id, { marker, ring }] of accidentLayerRef.current) {
       if (!seen.has(id)) {
         marker.remove()
+        if (ring) ring.remove()
         accidentLayerRef.current.delete(id)
       }
     }
@@ -571,6 +676,8 @@ export default function LiveMap({ N, policyKey, params: paramsProp }) {
       // DEMO_RATE_BOOST × accidentRateMultiplier together accelerate the demo
       // beyond the real-world rate so events arrive on a watchable cadence.
       const boost = (st.params.accidentRateMultiplier ?? 1) * DEMO_RATE_BOOST
+      const R_IoT = st.params.sensingRange ?? st.params.iotRange ?? DEFAULT_R_IOT
+      const v = st.params.droneSpeed
       for (let r = 0; r < st.roadStates.length; r++) {
         const rs = st.roadStates[r]
         for (const row of rs.rateMatrix) {
@@ -583,6 +690,24 @@ export default function LiveMap({ N, policyKey, params: paramsProp }) {
             const s = sKm * 1000
             const seq = st.nextAccidentSeq++
             const accId = `A${String(seq).padStart(4, '0')}`
+            // IoT alert: closed-form T_alert from §11 + 3-candidate rule.
+            const uavStates = {}
+            for (const d of rs.droneStates) {
+              if (d.state === 'patrolling') {
+                uavStates[d.patrolIdx] = { sj: d.s, dj: d.dir }
+              }
+            }
+            const detection = computeIotDetection({
+              segments: rs.segments,
+              uavStates,
+              sk: s,
+              R_IoT,
+              v,
+            })
+            const responderDrone = detection.responder != null
+              ? rs.droneStates.find((d) => d.patrolIdx === detection.responder)
+              : null
+            const willDetect = detection.tAlert != null && detection.tAlert <= st.params.maxDetectionWindow
             st.accidents.push({
               id: accId,
               seq,
@@ -594,6 +719,11 @@ export default function LiveMap({ N, policyKey, params: paramsProp }) {
               time: st.simT,
               detected: false,
               missed: false,
+              R_IoT,
+              predictedTAlert: detection.tAlert,
+              detectAt: willDetect ? st.simT + detection.tAlert : null,
+              responderPatrolIdx: detection.responder,
+              responderId: responderDrone?.id ?? null,
             })
             st.totalGenerated++
             st.events.push({
@@ -604,44 +734,39 @@ export default function LiveMap({ N, policyKey, params: paramsProp }) {
               section: `S${row.sectionIndex}`,
               slot: `${slot.index} (${slot.label})`,
               uav_id: '',
-              detection_time_s: '',
-              note: `Accident in S${row.sectionIndex} during slot ${slot.index}`,
+              detection_time_s: detection.tAlert != null ? +detection.tAlert.toFixed(1) : '',
+              note: detection.tAlert != null
+                ? `S${row.sectionIndex} slot ${slot.index} · ETA ${detection.tAlert.toFixed(0)}s via UAV-${detection.responder}`
+                : `S${row.sectionIndex} slot ${slot.index} · no IoT overlap (all 3 candidates returning/docked)`,
             })
           }
         }
       }
 
-      // Detection check — increment cumulative counters on the transition
-      // (so totals survive the accident-list cap below).
+      // Detection check — flip accident states based on the IoT-predicted
+      // alert time. No per-frame distance check; the closed-form T_alert
+      // computed at admission is the source of truth.
       for (const acc of st.accidents) {
         if (acc.detected || acc.missed) continue
-        const rs = st.roadStates[acc.roadIdx]
-        const accPos = positionAt(rs.path, acc.s)
-        for (const d of rs.droneStates) {
-          if (d.state !== 'patrolling') continue
-          const dPos = positionAt(rs.path, d.s)
-          const dist = Math.hypot(accPos[0] - dPos[0], accPos[1] - dPos[1])
-          if (dist <= st.params.sensingRange) {
-            acc.detected = true
-            acc.detectionTime = st.simT - acc.time
-            acc.detectedAt = st.simT
-            acc.responder = d.id
-            st.totalDetected++
-            st.events.push({
-              time_s: +st.simT.toFixed(1),
-              kind: 'detected',
-              accident_id: acc.id,
-              corridor: rs.road.name,
-              uav_id: d.id,
-              detection_time_s: +acc.detectionTime.toFixed(1),
-              note: 'Detected by drone',
-            })
-            break
-          }
-        }
-        if (!acc.detected && st.simT - acc.time > st.params.maxDetectionWindow) {
+        if (acc.detectAt != null && st.simT >= acc.detectAt) {
+          acc.detected = true
+          acc.detectionTime = acc.predictedTAlert
+          acc.detectedAt = st.simT
+          st.totalDetected++
+          const rs = st.roadStates[acc.roadIdx]
+          st.events.push({
+            time_s: +st.simT.toFixed(1),
+            kind: 'detected',
+            accident_id: acc.id,
+            corridor: rs.road.name,
+            uav_id: acc.responderId ?? '',
+            detection_time_s: +acc.detectionTime.toFixed(1),
+            note: `IoT alert received by UAV-${acc.responderPatrolIdx}`,
+          })
+        } else if (st.simT - acc.time > st.params.maxDetectionWindow) {
           acc.missed = true
           st.totalMissed++
+          const rs = st.roadStates[acc.roadIdx]
           st.events.push({
             time_s: +st.simT.toFixed(1),
             kind: 'missed',
@@ -740,8 +865,26 @@ export default function LiveMap({ N, policyKey, params: paramsProp }) {
           >
             {currentHourLabel} · slot {currentSlot.index}
           </span>
+          <span className="text-slate-600 text-[10px]">/</span>
+          <span
+            className="text-[10.5px] font-mono text-violet-700"
+            title={`Patrol mode — ${st?.patrolMode === 'risk-aware' ? 'sections grouped by equal cumulative risk per UAV' : 'corridor split into M equal-length segments'}`}
+          >
+            {st?.patrolMode === 'risk-aware' ? 'risk-aware patrol' : 'uniform patrol'}
+          </span>
         </div>
         <div className="ml-auto flex items-center gap-1.5">
+          <button
+            onClick={() => setShowPatrol((s) => !s)}
+            className={`px-3 py-1.5 text-[10.5px] font-semibold rounded-md cursor-pointer ring-1 transition-colors ${
+              showPatrol
+                ? 'bg-violet-500/15 text-violet-800 hover:bg-violet-500/25 ring-violet-500/40'
+                : 'bg-slate-700/50 text-slate-400 hover:text-slate-200 ring-slate-700/50'
+            }`}
+            title={`Show UAV patrol segments [A_m, B_m] (${stateRef.current?.patrolMode === 'risk-aware' ? 'equal cumulative risk' : 'equal length'})`}
+          >
+            ╳ Patrol {showPatrol ? 'ON' : 'OFF'}
+          </button>
           <button
             onClick={() => setShowSections((s) => !s)}
             className={`px-3 py-1.5 text-[10.5px] font-semibold rounded-md cursor-pointer ring-1 transition-colors ${
@@ -833,6 +976,21 @@ export default function LiveMap({ N, policyKey, params: paramsProp }) {
             <line x1="17" y1="5" x2="17" y2="11" stroke="#0891B2" strokeWidth="1.5" opacity="0.7"/>
           </svg>
           Sections <span className="text-slate-500">— 1-km ticks, labels every 5 km</span>
+        </span>
+        <span className="flex items-center gap-1.5 text-slate-300">
+          <svg width="22" height="16" viewBox="0 0 22 16">
+            <line x1="6" y1="2" x2="6" y2="14" stroke="#7C3AED" strokeWidth="3" strokeDasharray="3 2"/>
+            <line x1="16" y1="2" x2="16" y2="14" stroke="#7C3AED" strokeWidth="3" strokeDasharray="3 2"/>
+            <rect x="7" y="6" width="8" height="4" rx="2" fill="#7C3AED" />
+          </svg>
+          Patrol <span className="text-slate-500">— UAV segments [A_m, B_m]</span>
+        </span>
+        <span className="flex items-center gap-1.5 text-slate-300">
+          <svg width="22" height="16" viewBox="0 0 22 16">
+            <circle cx="11" cy="8" r="6" fill="#ef4444" fillOpacity="0.10" stroke="#ef4444" strokeWidth="1.1"/>
+            <circle cx="11" cy="8" r="1.6" fill="#ef4444"/>
+          </svg>
+          IoT zone <span className="text-slate-500">— R<sub>IoT</sub> around active accidents</span>
         </span>
         <span className="ml-auto text-[9px] text-slate-500 italic">
           Drone colour matches its assigned road

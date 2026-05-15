@@ -102,15 +102,19 @@ export const POLICIES = {
     label: 'Uniform',
     color: '#1D4ED8',
     description:
-      'Equal drones per road; leftover drones go to the longest roads first.',
+      'Equal drones per road; within each road, M equal-length patrol segments.',
     allocate: allocateUniform,
+    // §6.1 — equal road length per UAV.
+    patrolMode: 'uniform',
   },
   riskAware: {
     key: 'riskAware',
     label: 'Risk-aware',
     color: '#f97316',
     description:
-      'Hamilton method on a composite risk score (accidents/km, AADT, speed, condition).',
+      'Hamilton method across roads + per-road segments grouped by equal cumulative risk.',
     allocate: allocateRiskAware,
+    // §6.2 — greedy equal-cumulative-risk grouping of 1-km sections.
+    patrolMode: 'risk-aware',
   },
 }

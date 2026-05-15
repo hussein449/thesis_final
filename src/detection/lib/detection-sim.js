@@ -55,6 +55,19 @@ import {
   generateAccidentsForDay,
 } from '../../partitioning/lib/accident-generator'
 
+import {
+  buildSections,
+} from '../../partitioning/lib/sections'
+
+import {
+  buildPatrolSegments,
+} from '../../partitioning/lib/uav-segments'
+
+import {
+  computeIotDetection,
+  DEFAULT_R_IOT,
+} from './iot-alert'
+
 // ---------------------------------------------------------------------------
 // Seedable RNG (mulberry32)
 // ---------------------------------------------------------------------------
@@ -98,12 +111,23 @@ export const DEFAULT_PARAMS = {
   //         with sustained patrol on a battery budget.
   droneSpeed: 12,            // m/s
 
-  // [LIT] Optical detection radius for road incidents from a low-altitude
-  //         (≈80 m AGL) UAV with a 4K camera is reported at 100–300 m,
-  //         depending on object size and viewing angle. See e.g. Kyrkou et al.
-  //         "Drone-Net: A drone-based UAV imagery dataset for traffic
-  //         monitoring" (2018). 200 m is mid-range.
-  sensingRange: 200,         // m
+  // [LIT/DESIGN] In the IoT-alert model (§9-§12 of the simplified-model
+  //         report) this is the IoT communication range R_IoT, not an
+  //         optical sensing radius. The ground IoT sensor near the accident
+  //         transmits an alert; the UAV receives it when it enters the
+  //         signal zone [s_k - R_IoT, s_k + R_IoT]. 200 m matches the
+  //         optical sensing radius from the prior model, so detection
+  //         statistics stay comparable until tuned.
+  sensingRange: 200,         // m (== R_IoT for the IoT alert model)
+  iotRange: DEFAULT_R_IOT,   // alias, in case callers prefer the IoT term
+
+  // §6 — UAV patrol segmentation mode. 'uniform' divides the corridor
+  // into M equal-length segments; 'risk-aware' groups 1-km sections so
+  // each UAV's segment carries roughly equal cumulative risk. The
+  // Monte Carlo runner sets this from the policy (uniform vs riskAware)
+  // before each sweep point, so the two policies are now genuinely
+  // distinct on a single-corridor configuration.
+  patrolMode: 'uniform',
 
   // [DESIGN] Beyond this an accident is counted as missed. Chosen so that a
   //         single drone covering a 4 km segment at 12 m/s will round-trip
@@ -175,11 +199,12 @@ const _roadModelCache = new Map()
 function getRoadRiskModel(road) {
   const cached = _roadModelCache.get(road.id)
   if (cached && cached._sig === road.accidents) return cached
+  const sections = buildSections(road.lengthKm)
   const scores = defaultSectionScores(road)
   const riskMatrix = computeRiskMatrix(scores)
   const slotProbs = computeSlotProbabilities(riskMatrix)
   const rateMatrix = computeSectionTimeSlotRates(dailyAccidentRate(road.accidents), slotProbs)
-  const model = { scores, riskMatrix, slotProbs, rateMatrix, _sig: road.accidents }
+  const model = { sections, scores, riskMatrix, slotProbs, rateMatrix, _sig: road.accidents }
   _roadModelCache.set(road.id, model)
   return model
 }
@@ -266,31 +291,39 @@ export function simulateOnce({ allocation, params, seed }) {
   const P = { ...DEFAULT_PARAMS, ...params }
   const rng = makeRng(seed)
 
-  // Per-road state — arrival rate is now derived from the section-time-slot
-  // model inside generateAccidentSchedule(), so no per-road baseRate field is
-  // needed on the road state object.
+  // Per-road state. Patrol segments come from §6 of the simplified-model
+  // report (uniform vs. risk-aware). Each UAV is assigned exactly one
+  // patrol segment [A_m, B_m] in meters along the corridor.
   const roadStates = allocation.map(({ road, drones: nDrones }) => {
     const path = buildRoadPath(road)
-    const droneStates = []
-    if (nDrones > 0) {
-      const segLen = path.totalLength / nDrones
-      for (let i = 0; i < nDrones; i++) {
-        const segStart = i * segLen
-        const segEnd = (i + 1) * segLen
-        droneStates.push({
-          s: segStart + rng() * segLen,
-          dir: rng() < 0.5 ? 1 : -1,
-          segStart,
-          segEnd,
-          battery: 60 + rng() * 40,
-          state: 'patrolling',           // patrolling | returning | docked
-          phaseEnd: 0,
+    const model = getRoadRiskModel(road)
+    const segments = nDrones > 0
+      ? buildPatrolSegments({
+          mode: P.patrolMode ?? 'uniform',
+          corridorLengthM: path.totalLength,
+          M: nDrones,
+          sections: model.sections,
+          riskMatrix: model.riskMatrix,
         })
-      }
+      : []
+    const droneStates = []
+    for (let i = 0; i < segments.length; i++) {
+      const seg = segments[i]
+      droneStates.push({
+        s: seg.A + rng() * (seg.B - seg.A),
+        dir: rng() < 0.5 ? 1 : -1,
+        segStart: seg.A,
+        segEnd: seg.B,
+        patrolIdx: seg.index,            // 1-based, used for IoT 3-candidate lookup
+        battery: 60 + rng() * 40,
+        state: 'patrolling',             // patrolling | returning | docked
+        phaseEnd: 0,
+      })
     }
     return {
       road,
       path,
+      segments,
       droneStates,
       nAssigned: nDrones,
     }
@@ -309,7 +342,6 @@ export function simulateOnce({ allocation, params, seed }) {
   // Step the simulation
   const availabilityHistory = []
   const dispatchAttempts = { covered: 0, delayed: 0 }
-  const active = []  // accidents that have occurred but not yet resolved
   let nextAccIdx = 0
 
   for (let t = 0; t < P.totalTime; t += P.dt) {
@@ -399,70 +431,55 @@ export function simulateOnce({ allocation, params, seed }) {
 
     availabilityHistory.push({ t, available: availableCount })
 
-    // (c) admit new accidents
+    // (c) admit new accidents — IoT alert model from §10-§12.
+    // Detection time is computed in closed form at the moment of admission:
+    // for the patrol segment m containing s_k, test only candidates
+    // j ∈ {m-1, m, m+1}; reserves currently covering one of those segments
+    // can stand in for a returning/docked UAV. T_alert is the minimum
+    // alert time across the up-to-3 candidates that are actually patrolling.
     while (
       nextAccIdx < accidents.length &&
       accidents[nextAccIdx].time <= t
     ) {
-      active.push(accidents[nextAccIdx])
+      const acc = accidents[nextAccIdx]
+      const rs = roadStates[acc.roadIdx]
+      const uavStates = {}
+      for (const d of rs.droneStates) {
+        if (d.state === 'patrolling') {
+          uavStates[d.patrolIdx] = { sj: d.s, dj: d.dir }
+        }
+      }
+      // A covering reserve replaces its target patrol UAV in the candidate set.
+      for (const r of reserves) {
+        if (r.state !== 'covering' || !r.target) continue
+        if (!rs.droneStates.includes(r.target)) continue
+        if (uavStates[r.target.patrolIdx]) continue
+        uavStates[r.target.patrolIdx] = { sj: r.s, dj: r.dir }
+      }
+      const detection = computeIotDetection({
+        segments: rs.segments,
+        uavStates,
+        sk: acc.s,
+        R_IoT: P.sensingRange ?? P.iotRange ?? DEFAULT_R_IOT,
+        v: P.droneSpeed,
+        t,
+      })
+      if (detection.tAlert != null && detection.tAlert <= P.maxDetectionWindow) {
+        acc.detected = true
+        acc.detectionTime = detection.tAlert
+        acc.responder = detection.responder
+        // Distinguish "covered by own patrol" vs. "covered by reserve" by
+        // checking which UAV won.
+        const responder = rs.droneStates.find(
+          (d) => d.patrolIdx === detection.responder && d.state === 'patrolling'
+        )
+        if (responder) dispatchAttempts.covered++
+        else dispatchAttempts.delayed++
+      } else {
+        acc.missed = true
+      }
       nextAccIdx++
     }
-
-    // (d) check detection for each active accident
-    for (let i = active.length - 1; i >= 0; i--) {
-      const acc = active[i]
-      const rs = roadStates[acc.roadIdx]
-      const accPos = positionAt(rs.path, acc.s)
-
-      let detected = false
-      // Check patrol drones on the same road
-      for (const d of rs.droneStates) {
-        if (d.state !== 'patrolling') continue
-        const dPos = positionAt(rs.path, d.s)
-        const dist = Math.hypot(accPos[0] - dPos[0], accPos[1] - dPos[1])
-        if (dist <= P.sensingRange) {
-          acc.detected = true
-          acc.detectionTime = t - acc.time
-          if (acc.detectionTime > 0) dispatchAttempts.covered++
-          detected = true
-          active.splice(i, 1)
-          break
-        }
-      }
-      if (detected) continue
-
-      // Check reserves currently covering on this road's segment
-      for (const r of reserves) {
-        if (r.state !== 'covering') continue
-        // Reserves cover a specific drone's segment, identified by target
-        const targetRoad = roadStates.find((x) =>
-          x.droneStates.includes(r.target)
-        )
-        if (targetRoad !== rs) continue
-        const rPos = positionAt(rs.path, r.s)
-        const dist = Math.hypot(accPos[0] - rPos[0], accPos[1] - rPos[1])
-        if (dist <= P.sensingRange) {
-          acc.detected = true
-          acc.detectionTime = t - acc.time
-          if (acc.detectionTime > 0) dispatchAttempts.delayed++
-          detected = true
-          active.splice(i, 1)
-          break
-        }
-      }
-      if (detected) continue
-
-      // Timeout
-      if (t - acc.time > P.maxDetectionWindow) {
-        acc.missed = true
-        active.splice(i, 1)
-      }
-    }
-  }
-
-  // Mark any accidents still active at the end as missed.
-  for (const acc of active) {
-    acc.missed = true
   }
 
   const detectedAccidents = accidents.filter((a) => a.detected)
@@ -509,26 +526,33 @@ export function simulateWithDispatch({ allocation, params, seed, dispatchRule = 
 
   const roadStates = allocation.map(({ road, drones: nDrones }) => {
     const path = buildRoadPath(road)
-    const droneStates = []
-    if (nDrones > 0) {
-      const segLen = path.totalLength / nDrones
-      for (let i = 0; i < nDrones; i++) {
-        const segStart = i * segLen
-        const segEnd = (i + 1) * segLen
-        droneStates.push({
-          idx: i,
-          s: segStart + rng() * segLen,
-          dir: rng() < 0.5 ? 1 : -1,
-          segStart,
-          segEnd,
-          battery: 60 + rng() * 40,
-          state: 'patrolling',
-          phaseEnd: 0,
-          dispatches: 0,
+    const model = getRoadRiskModel(road)
+    const segments = nDrones > 0
+      ? buildPatrolSegments({
+          mode: P.patrolMode ?? 'uniform',
+          corridorLengthM: path.totalLength,
+          M: nDrones,
+          sections: model.sections,
+          riskMatrix: model.riskMatrix,
         })
-      }
+      : []
+    const droneStates = []
+    for (let i = 0; i < segments.length; i++) {
+      const seg = segments[i]
+      droneStates.push({
+        idx: i,
+        s: seg.A + rng() * (seg.B - seg.A),
+        dir: rng() < 0.5 ? 1 : -1,
+        segStart: seg.A,
+        segEnd: seg.B,
+        patrolIdx: seg.index,
+        battery: 60 + rng() * 40,
+        state: 'patrolling',
+        phaseEnd: 0,
+        dispatches: 0,
+      })
     }
-    return { road, path, droneStates, nAssigned: nDrones }
+    return { road, path, segments, droneStates, nAssigned: nDrones }
   })
 
   // Pre-generate accidents via the section-time-slot model.
@@ -536,7 +560,6 @@ export function simulateWithDispatch({ allocation, params, seed, dispatchRule = 
   for (const a of accidents) a.dispatchedAt = null
 
   const availabilityHistory = []
-  const active = []
   let nextAccIdx = 0
 
   for (let t = 0; t < P.totalTime; t += P.dt) {
@@ -563,7 +586,10 @@ export function simulateWithDispatch({ allocation, params, seed, dispatchRule = 
     }
     availabilityHistory.push({ t, available: availableCount })
 
-    // Admit new accidents
+    // Admit new accidents. This entry point studies dispatch rules — it
+    // keeps the "teleport-to-accident" model so the three dispatch rules
+    // (nearest / batteryFirst / balanced) remain a meaningful comparison.
+    // The canonical IoT alert detection lives in simulateOnce.
     while (nextAccIdx < accidents.length && accidents[nextAccIdx].time <= t) {
       const acc = accidents[nextAccIdx]
       const rs = roadStates[acc.roadIdx]
@@ -577,7 +603,6 @@ export function simulateWithDispatch({ allocation, params, seed, dispatchRule = 
         } else if (dispatchRule === 'batteryFirst') {
           chosen = candidates.reduce((best, d) => d.battery > best.battery ? d : best)
         } else {
-          // balanced — fewest dispatches
           chosen = candidates.reduce((best, d) => d.dispatches < best.dispatches ? d : best)
         }
         const travelTime = Math.abs(chosen.s - acc.s) / P.droneSpeed
@@ -585,15 +610,10 @@ export function simulateWithDispatch({ allocation, params, seed, dispatchRule = 
         acc.detected = true
         acc.dispatchedAt = t
         chosen.dispatches++
+      } else {
+        acc.missed = true
       }
-      // If no drone available, mark as missed immediately
-      if (!acc.detected) acc.missed = true
       nextAccIdx++
-    }
-
-    // Timeout unresolved actives (not used in dispatch model but kept for shape compat)
-    for (const acc of active) {
-      if (!acc.detected && t - acc.time > P.maxDetectionWindow) acc.missed = true
     }
   }
 
@@ -629,25 +649,33 @@ export function simulateDetailedLog({ allocation, params, seed, sampleInterval =
 
   const roadStates = allocation.map(({ road, drones: nDrones }) => {
     const path = buildRoadPath(road)
-    const droneStates = []
-    if (nDrones > 0) {
-      const segLen = path.totalLength / nDrones
-      for (let i = 0; i < nDrones; i++) {
-        const si = i * segLen
-        droneStates.push({
-          id: `${road.shortName}-${i + 1}`,
-          corridor: road.name,
-          s: si + rng() * segLen,
-          dir: rng() < 0.5 ? 1 : -1,
-          segStart: si,
-          segEnd: (i + 1) * segLen,
-          battery: 60 + rng() * 40,
-          state: 'patrolling',
-          phaseEnd: 0,
+    const model = getRoadRiskModel(road)
+    const segments = nDrones > 0
+      ? buildPatrolSegments({
+          mode: P.patrolMode ?? 'uniform',
+          corridorLengthM: path.totalLength,
+          M: nDrones,
+          sections: model.sections,
+          riskMatrix: model.riskMatrix,
         })
-      }
+      : []
+    const droneStates = []
+    for (let i = 0; i < segments.length; i++) {
+      const seg = segments[i]
+      droneStates.push({
+        id: `${road.shortName}-${i + 1}`,
+        corridor: road.name,
+        s: seg.A + rng() * (seg.B - seg.A),
+        dir: rng() < 0.5 ? 1 : -1,
+        segStart: seg.A,
+        segEnd: seg.B,
+        patrolIdx: seg.index,
+        battery: 60 + rng() * 40,
+        state: 'patrolling',
+        phaseEnd: 0,
+      })
     }
-    return { road, path, droneStates }
+    return { road, path, segments, droneStates }
   })
 
   // Pre-generate accidents via the section-time-slot model.
@@ -658,7 +686,6 @@ export function simulateDetailedLog({ allocation, params, seed, sampleInterval =
   }
 
   const droneLog = []
-  const active = []
   let nextAccIdx = 0
   let nextSample = 0
 
@@ -698,34 +725,35 @@ export function simulateDetailedLog({ allocation, params, seed, sampleInterval =
       }
     }
 
+    // IoT alert detection — closed-form at admission (matches simulateOnce).
     while (nextAccIdx < accidents.length && accidents[nextAccIdx].time <= t) {
-      active.push(accidents[nextAccIdx++])
-    }
-
-    for (let i = active.length - 1; i >= 0; i--) {
-      const acc = active[i]
+      const acc = accidents[nextAccIdx]
       const rs = roadStates[acc.roadIdx]
-      const accPos = positionAt(rs.path, acc.s)
-      let detected = false
+      const uavStates = {}
       for (const d of rs.droneStates) {
-        if (d.state !== 'patrolling') continue
-        const dPos = positionAt(rs.path, d.s)
-        if (Math.hypot(accPos[0] - dPos[0], accPos[1] - dPos[1]) <= P.sensingRange) {
-          acc.detected = true
-          acc.detectionTime = +(t - acc.time).toFixed(1)
-          acc.respondingUAV = d.id
-          detected = true
-          active.splice(i, 1)
-          break
+        if (d.state === 'patrolling') {
+          uavStates[d.patrolIdx] = { sj: d.s, dj: d.dir }
         }
       }
-      if (!detected && t - acc.time > P.maxDetectionWindow) {
+      const detection = computeIotDetection({
+        segments: rs.segments,
+        uavStates,
+        sk: acc.s,
+        R_IoT: P.sensingRange ?? P.iotRange ?? DEFAULT_R_IOT,
+        v: P.droneSpeed,
+        t,
+      })
+      if (detection.tAlert != null && detection.tAlert <= P.maxDetectionWindow) {
+        acc.detected = true
+        acc.detectionTime = +detection.tAlert.toFixed(1)
+        const responder = rs.droneStates.find((d) => d.patrolIdx === detection.responder)
+        acc.respondingUAV = responder?.id ?? ''
+      } else {
         acc.missed = true
-        active.splice(i, 1)
       }
+      nextAccIdx++
     }
   }
-  for (const acc of active) acc.missed = true
 
   const accidentLog = accidents.map((a) => ({
     accident_id: a.accidentId,
@@ -754,21 +782,31 @@ export function simulateBatteryTrace({ allocation, params, seed, sampleInterval 
   const P = { ...DEFAULT_PARAMS, ...params, enableOperational: true }
   const rng = makeRng(seed ?? 42)
 
-  // Build drone list with initial battery (staggered so not all dock at once)
+  // Build drone list with initial battery (staggered so not all dock at once).
+  // Patrol segments come from §6 (uniform vs risk-aware).
   const drones = []
   allocation.forEach(({ road, drones: nDrones }, ri) => {
     const path = buildRoadPath(road)
     if (nDrones === 0) return
-    const segLen = path.totalLength / nDrones
-    for (let i = 0; i < nDrones; i++) {
+    const model = getRoadRiskModel(road)
+    const segments = buildPatrolSegments({
+      mode: P.patrolMode ?? 'uniform',
+      corridorLengthM: path.totalLength,
+      M: nDrones,
+      sections: model.sections,
+      riskMatrix: model.riskMatrix,
+    })
+    for (let i = 0; i < segments.length; i++) {
+      const seg = segments[i]
       drones.push({
         id: `${road.shortName}-${i + 1}`,
         label: `${road.shortName} #${i + 1}`,
         color: road.color,
         roadIdx: ri,
-        segStart: i * segLen,
-        segEnd: (i + 1) * segLen,
-        s: i * segLen + rng() * segLen,
+        segStart: seg.A,
+        segEnd: seg.B,
+        patrolIdx: seg.index,
+        s: seg.A + rng() * (seg.B - seg.A),
         dir: rng() < 0.5 ? 1 : -1,
         battery: 40 + (i / Math.max(nDrones - 1, 1)) * 55, // stagger 40–95%
         state: 'patrolling',
@@ -829,16 +867,25 @@ export function simulateDroneTrajectories({ allocation, params, seed, sampleInte
   allocation.forEach(({ road, drones: nDrones }) => {
     const path = buildRoadPath(road)
     if (nDrones === 0) return
-    const segLen = path.totalLength / nDrones
-    for (let i = 0; i < nDrones; i++) {
+    const model = getRoadRiskModel(road)
+    const segments = buildPatrolSegments({
+      mode: P.patrolMode ?? 'uniform',
+      corridorLengthM: path.totalLength,
+      M: nDrones,
+      sections: model.sections,
+      riskMatrix: model.riskMatrix,
+    })
+    for (let i = 0; i < segments.length; i++) {
+      const seg = segments[i]
       drones.push({
         id: `${road.shortName}-${i + 1}`,
         label: `${road.shortName} #${i + 1}`,
         color: road.color,
         roadPath: path,
-        segStart: i * segLen,
-        segEnd: (i + 1) * segLen,
-        s: i * segLen + rng() * segLen,
+        segStart: seg.A,
+        segEnd: seg.B,
+        patrolIdx: seg.index,
+        s: seg.A + rng() * (seg.B - seg.A),
         dir: rng() < 0.5 ? 1 : -1,
         battery: 40 + (i / Math.max(nDrones - 1, 1)) * 55,
         state: 'patrolling',
