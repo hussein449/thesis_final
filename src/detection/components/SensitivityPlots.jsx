@@ -21,13 +21,16 @@ const MAX_TRIALS = 10
 const FALLBACK_N = 10
 
 // ── Parameter sweep definitions ──────────────────────────────────────────────
+// `defaultVal` is intentionally OMITTED here — it's resolved per render
+// from the user's Configure values, with DEFAULT_PARAMS as a fallback.
+// That keeps the "default" reference line and the "(def. X)" label
+// in sync with whatever the user set on the Configure page.
 const SWEEPS = [
   {
     key: 'droneSpeed',
     label: 'Patrol speed',
     unit: 'm/s',
     values: [6, 8, 10, 12, 15, 18, 21],
-    defaultVal: DEFAULT_PARAMS.droneSpeed,
     description:
       'Faster drones cover their segment more frequently, reducing the gap between patrols.',
   },
@@ -36,7 +39,6 @@ const SWEEPS = [
     label: 'Trial start hour',
     unit: 'h',
     values: [0, 3, 6, 8, 10, 14, 18, 22],
-    defaultVal: DEFAULT_PARAMS.simStartHour,
     description:
       'Hour of day (0–23) at which the trial window begins. Different time slots (00–06, 06–10, 10–16, 16–20, 20–24) weight T / C / M differently and shift the spatial accident distribution.',
   },
@@ -45,7 +47,6 @@ const SWEEPS = [
     label: 'Dock threshold',
     unit: '%',
     values: [10, 15, 20, 25, 30, 35, 40],
-    defaultVal: DEFAULT_PARAMS.lowBatteryThreshold,
     description:
       'Battery level at which a drone returns to dock. Higher threshold → drones dock sooner → more gaps.',
   },
@@ -54,7 +55,6 @@ const SWEEPS = [
     label: 'IoT range R_IoT',
     unit: 'm',
     values: [50, 100, 150, 200, 250, 300, 350],
-    defaultVal: DEFAULT_PARAMS.sensingRange,
     description:
       'IoT communication range. The accident enters detection when a candidate UAV reaches the signal zone [s_k − R_IoT, s_k + R_IoT]. Wider range → smaller T_alert.',
   },
@@ -96,7 +96,7 @@ function computeSweep(sweep, { trialsPerPoint, totalTime, fixedN, baseParams }) 
   return results
 }
 
-function SweepChart({ sweep, data, fixedN, trials }) {
+function SweepChart({ sweep, data, fixedN, trials, defaultVal }) {
   return (
     <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-card)] p-4">
       <div className="mb-1">
@@ -146,8 +146,8 @@ function SweepChart({ sweep, data, fixedN, trials }) {
                 <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-lg px-3 py-2 shadow-xl">
                   <div className="text-[10px] text-[var(--color-txt2)] mb-1">
                     {sweep.label} = {label}{sweep.unit}
-                    {label === sweep.defaultVal && (
-                      <span className="ml-1.5 text-amber-700/80">← default</span>
+                    {label === defaultVal && (
+                      <span className="ml-1.5 text-amber-700/80">← Configure value</span>
                     )}
                   </div>
                   {payload.map((p, i) => (
@@ -165,11 +165,11 @@ function SweepChart({ sweep, data, fixedN, trials }) {
           />
           <Legend verticalAlign="top" align="right" iconSize={9} wrapperStyle={{ fontSize: 10, color: textColor, paddingBottom: 6 }} />
           <ReferenceLine
-            x={sweep.defaultVal}
+            x={defaultVal}
             stroke="#B45309"
             strokeDasharray="4 3"
             strokeWidth={1}
-            label={{ value: 'default', position: 'top', fill: '#B45309', fontSize: 8 }}
+            label={{ value: 'Configure', position: 'top', fill: '#B45309', fontSize: 8 }}
           />
           <Line
             type="monotone"
@@ -204,6 +204,15 @@ export default function SensitivityPlots({ fleetSizes, trialsPerPoint, params })
   const safeTrials = Math.min(Math.max(1, trialsPerPoint ?? MAX_TRIALS), MAX_TRIALS)
   const safeTotalTime = Math.min(params?.totalTime ?? MAX_TOTAL_TIME, MAX_TOTAL_TIME)
   const baseParams = params ?? {}
+
+  // Per-sweep defaultVal comes from the user's Configure params first,
+  // then falls back to DEFAULT_PARAMS. This is what drives the amber
+  // "Configure" reference line on each chart and the "(def. X)" label.
+  const sweepsWithDefaults = SWEEPS.map((s) => ({
+    ...s,
+    defaultVal: baseParams[s.key] ?? DEFAULT_PARAMS[s.key],
+  }))
+
   const depKey = `${fixedN}|${safeTrials}|${safeTotalTime}|${JSON.stringify(baseParams)}`
 
   const sweepData = useMemo(() => {
@@ -213,7 +222,7 @@ export default function SensitivityPlots({ fleetSizes, trialsPerPoint, params })
       fixedN,
       baseParams,
     }
-    return SWEEPS.map((sweep) => ({ sweep, data: computeSweep(sweep, opts) }))
+    return sweepsWithDefaults.map((sweep) => ({ sweep, data: computeSweep(sweep, opts) }))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [depKey])
 
@@ -232,11 +241,11 @@ export default function SensitivityPlots({ fleetSizes, trialsPerPoint, params })
           Both allocation policies are shown to reveal where Risk-aware outperforms Uniform.
         </div>
         <div className="mt-3 flex flex-wrap gap-4 text-[10px] text-[var(--color-txt3)]">
-          {SWEEPS.map((s) => (
+          {sweepsWithDefaults.map((s) => (
             <div key={s.key} className="flex items-center gap-1.5">
               <span className="font-semibold text-[var(--color-txt2)]">{s.label}:</span>
               <span className="font-mono">{s.values.join(', ')} {s.unit}</span>
-              <span className="text-amber-700/70">(def. {s.defaultVal})</span>
+              <span className="text-amber-700/70">(Configure: {s.defaultVal})</span>
             </div>
           ))}
         </div>
@@ -290,7 +299,14 @@ export default function SensitivityPlots({ fleetSizes, trialsPerPoint, params })
       {/* 2×2 grid of charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {sweepData.map(({ sweep, data }) => (
-          <SweepChart key={sweep.key} sweep={sweep} data={data} fixedN={fixedN} trials={safeTrials} />
+          <SweepChart
+            key={sweep.key}
+            sweep={sweep}
+            data={data}
+            fixedN={fixedN}
+            trials={safeTrials}
+            defaultVal={sweep.defaultVal}
+          />
         ))}
       </div>
 
