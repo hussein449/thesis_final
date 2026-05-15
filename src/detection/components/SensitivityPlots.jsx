@@ -96,14 +96,14 @@ function computeSweep(sweep, { trialsPerPoint, totalTime, fixedN, baseParams }) 
   return results
 }
 
-function SweepChart({ sweep, data }) {
+function SweepChart({ sweep, data, fixedN, trials }) {
   return (
     <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-card)] p-4">
       <div className="mb-1">
         <div className="text-[10px] text-[var(--color-txt2)] uppercase tracking-widest font-semibold">
           {sweep.label}
           <span className="ml-2 text-[var(--color-txt3)] normal-case tracking-normal font-normal">
-            — sensitivity at N = {FIXED_N}, {TRIALS} trials/point
+            — sensitivity at N = {fixedN}, {trials} trials/point
           </span>
         </div>
         <div className="text-[9.5px] text-[var(--color-txt3)] mt-0.5 leading-relaxed">
@@ -290,7 +290,7 @@ export default function SensitivityPlots({ fleetSizes, trialsPerPoint, params })
       {/* 2×2 grid of charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {sweepData.map(({ sweep, data }) => (
-          <SweepChart key={sweep.key} sweep={sweep} data={data} />
+          <SweepChart key={sweep.key} sweep={sweep} data={data} fixedN={fixedN} trials={safeTrials} />
         ))}
       </div>
 
