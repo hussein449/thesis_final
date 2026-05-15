@@ -35,15 +35,19 @@ function buildPUnder2MinData(results) {
 // ── Empirical CDF of detection times at a fixed N ────────────────────────────
 const CDF_N = 10
 const CDF_TRIALS = 20
+// 7 simulated days × CDF_TRIALS=20 × ~4 events/trial = ~80 detection
+// samples per policy — enough to draw a smooth CDF at real corridor rates.
+const CDF_TOTAL_TIME = 7 * 86400
 
 function buildCDFData() {
   const allTimes = { uniform: [], riskAware: [] }
-  const params = { ...DEFAULT_PARAMS, totalTime: 1800 }
+  const params = { ...DEFAULT_PARAMS, totalTime: CDF_TOTAL_TIME }
 
   for (const pk of ['uniform', 'riskAware']) {
     const allocation = POLICIES[pk].allocate(CDF_N)
+    const trialParams = { ...params, patrolMode: POLICIES[pk].patrolMode ?? 'uniform' }
     for (let t = 0; t < CDF_TRIALS; t++) {
-      const r = simulateOnce({ allocation, params, seed: 7 + t * 53 })
+      const r = simulateOnce({ allocation, params: trialParams, seed: 7 + t * 53 })
       allTimes[pk].push(...r.detectionTimes)
     }
     allTimes[pk].sort((a, b) => a - b)

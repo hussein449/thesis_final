@@ -4,10 +4,10 @@ import { POLICIES } from '../lib/policies'
 
 const EXPORT_N = 10
 const EXPORT_SEED = 42
-// Long real-rate trial so the export contains a useful number of events
-// without any stress multiplier — 60 simulated days at the corridor's
-// historical ~200 accidents/yr yields ≈ 33 expected events.
-const EXPORT_DAYS = 60
+// 7 simulated days at the corridor's real ~200 accidents/yr yields ~4
+// expected events — enough to show the log structure without bloating
+// the droneLog (sampleInterval=60s × 7 days × 10 drones ≈ 100K rows).
+const EXPORT_DAYS = 7
 const EXPORT_PARAMS = { totalTime: EXPORT_DAYS * 86400 }
 
 function toCSV(rows) {

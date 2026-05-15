@@ -35,11 +35,12 @@ function ChartCard({ title, subtitle, children }) {
   )
 }
 
-function CustomTooltip({ active, payload, label, xLabel = 't (s)', decimals = 1, unit = '' }) {
+function CustomTooltip({ active, payload, label, xLabel = 't (s)', decimals = 1, unit = '', formatLabel }) {
   if (!active || !payload?.length) return null
+  const displayLabel = formatLabel ? formatLabel(label) : label
   return (
     <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-lg px-3 py-2 shadow-xl">
-      <div className="text-[10px] text-[var(--color-txt2)] mb-1">{xLabel}: {label}</div>
+      <div className="text-[10px] text-[var(--color-txt2)] mb-1">{xLabel}: {displayLabel}</div>
       {payload.map((p, i) => (
         <div key={i} className="flex items-center gap-2 text-[11px]">
           <span className="w-2 h-2 rounded-full" style={{ background: p.color }} />
@@ -52,6 +53,22 @@ function CustomTooltip({ active, payload, label, xLabel = 't (s)', decimals = 1,
       ))}
     </div>
   )
+}
+
+/**
+ * Pick the right time unit for the X-axis based on the trial duration.
+ * 30-day trials make a "minutes" axis useless (43,200 minutes); 30-min
+ * trials make a "days" axis useless. Returns { label, fmt } where fmt
+ * takes seconds and returns a short string.
+ */
+function pickTimeAxis(maxSeconds) {
+  if (maxSeconds <= 4 * 3600) {
+    return { label: 'min', fmt: (v) => `${Math.round(v / 60)}m` }
+  }
+  if (maxSeconds <= 4 * 86400) {
+    return { label: 'h', fmt: (v) => `${Math.round(v / 3600)}h` }
+  }
+  return { label: 'd', fmt: (v) => `${(v / 86400).toFixed(1)}d` }
 }
 
 function buildAvailabilityData(availabilityByPolicy, selectedN) {
@@ -93,6 +110,12 @@ function buildMissedData(results) {
 // ─── Battery Evolution Chart ──────────────────────────────────────────────────
 const BATTERY_FLEET_OPTIONS = [5, 10, 20]
 
+// Battery-cycle visualisation: only a few cycles needed to see the
+// drain/dock/charge pattern. Capped at 4 simulated hours so the chart
+// is dense and the trial finishes instantly, regardless of what the
+// global DEFAULT_PARAMS.totalTime is set to (30 days for sweeps).
+const BATTERY_TRACE_HOURS = 4
+
 function BatteryEvolutionChart() {
   const [fleetN, setFleetN] = useState(10)
 
@@ -100,6 +123,7 @@ function BatteryEvolutionChart() {
     const allocation = allocateDrones(fleetN)
     return simulateBatteryTrace({
       allocation,
+      params: { totalTime: BATTERY_TRACE_HOURS * 3600 },
       seed: 42,
       sampleInterval: 60,
     })
@@ -219,6 +243,8 @@ export default function AvailabilityPlots({
 
   const availData = buildAvailabilityData(availabilityByPolicy ?? {}, selectedN)
   const missedData = buildMissedData(results ?? {})
+  const maxT = availData.length > 0 ? availData[availData.length - 1].t : 3600
+  const timeAxis = pickTimeAxis(maxT)
 
   return (
     <div className="space-y-4">
@@ -259,9 +285,9 @@ export default function AvailabilityPlots({
                   dataKey="t"
                   stroke={text}
                   tick={{ fontSize: 10 }}
-                  tickFormatter={(v) => `${Math.round(v / 60)}m`}
+                  tickFormatter={timeAxis.fmt}
                   label={{
-                    value: 'Simulated time',
+                    value: `Simulated time (${timeAxis.label})`,
                     position: 'insideBottom',
                     offset: -2,
                     fill: text,
@@ -279,7 +305,7 @@ export default function AvailabilityPlots({
                     fontSize: 10,
                   }}
                 />
-                <Tooltip content={<CustomTooltip />} />
+                <Tooltip content={<CustomTooltip xLabel={`t (${timeAxis.label})`} formatLabel={timeAxis.fmt} />} />
                 <Legend wrapperStyle={{ fontSize: 10, color: text }} />
                 {policies.map((p) => (
                   <Line

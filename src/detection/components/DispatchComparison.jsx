@@ -34,8 +34,11 @@ const TRIALS = 10
 const grid = '#1e293b'
 const textColor = '#64748b'
 
+// 7 simulated days at the corridor's real ~200 accidents/yr — same
+// rationale as SensitivityPlots: enough events per trial to compare
+// dispatch rules meaningfully without locking the page on a 30-day sim.
 function computeDispatchSweep() {
-  const params = { ...DEFAULT_PARAMS, totalTime: 1800 }
+  const params = { ...DEFAULT_PARAMS, totalTime: 7 * 86400 }
   // Use risk-aware allocation (standard)
   const data = FLEET_SIZES.map((N) => {
     const allocation = POLICIES.riskAware.allocate(N)

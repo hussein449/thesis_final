@@ -81,14 +81,16 @@ export async function runSweep({
         nTotal += result.nTotal
         nUnder2Min += result.detectionTimes.filter((t) => t <= 120).length
 
-        // Sample availability history at coarse resolution (every 60 s)
-        // and accumulate so we can later average across trials.
+        // Sample availability history. Target ~200 points per timeline
+        // regardless of trial length, so the chart stays smooth and fast
+        // whether the trial is 30 minutes or 30 days.
+        const TARGET_POINTS = 200
+        const stride = Math.max(1, Math.floor(result.availabilityHistory.length / TARGET_POINTS))
         if (trial === 0) {
           availabilitySamples = result.availabilityHistory
-            .filter((_, i) => i % 60 === 0)
+            .filter((_, i) => i % stride === 0)
             .map((p) => ({ t: p.t, sum: p.available, count: 1 }))
         } else {
-          const stride = Math.max(1, Math.floor(result.availabilityHistory.length / availabilitySamples.length))
           for (let i = 0; i < availabilitySamples.length; i++) {
             const src = result.availabilityHistory[i * stride]
             if (src) {

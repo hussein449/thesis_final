@@ -59,18 +59,24 @@ const SWEEPS = [
 const grid = '#1e293b'
 const textColor = '#64748b'
 
-// Run sensitivity sweep synchronously (fast enough — ~500 simulateOnce calls)
+// Run sensitivity sweep synchronously. Each trial is 7 simulated days at
+// the corridor's real ~200 accidents/yr → ~4 expected events per trial,
+// × TRIALS=10 = ~40 events per (sweep value, policy) — enough signal to
+// see the parameter's effect on T_alert without locking the browser too
+// long.
+const SWEEP_TOTAL_TIME = 7 * 86400
 function computeSweep(sweep) {
   const results = []
   for (const v of sweep.values) {
-    const params = { ...DEFAULT_PARAMS, [sweep.key]: v, totalTime: 1800 }
+    const params = { ...DEFAULT_PARAMS, [sweep.key]: v, totalTime: SWEEP_TOTAL_TIME }
     const row = { v }
     for (const pKey of ['uniform', 'riskAware']) {
       const allocation = POLICIES[pKey].allocate(FIXED_N)
+      const trialParams = { ...params, patrolMode: POLICIES[pKey].patrolMode ?? 'uniform' }
       let totalDt = 0
       let count = 0
       for (let t = 0; t < TRIALS; t++) {
-        const r = simulateOnce({ allocation, params, seed: 42 + t * 31 })
+        const r = simulateOnce({ allocation, params: trialParams, seed: 42 + t * 31 })
         r.detectionTimes.forEach((dt) => { totalDt += dt; count++ })
       }
       row[pKey] = count > 0 ? Math.round(totalDt / count) : null
