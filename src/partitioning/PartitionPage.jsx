@@ -72,7 +72,8 @@ function RiskScoreTable({ allocations }) {
       <div>
         <div className="text-[10px] text-[var(--color-txt2)] uppercase tracking-widest font-semibold mb-1">Risk Score Breakdown</div>
         <div className="text-[9.5px] text-[var(--color-txt3)] leading-relaxed">
-          Full decomposition of the Poisson mean μ = 0.40·A + 0.25·T + 0.20·S + 0.15·C, with risk R = 1 − e<sup>−μ</sup> (probability of ≥1 accident). Normalised to [0,1].
+          Full decomposition of the Poisson mean μ = 0.40·A + 0.25·T + 0.20·S + 0.15·C, with risk R = 1 − e<sup>−μ</sup> (probability of ≥1 accident).
+          Each predictor is divided by a reference value to give a dimensionless exposure ratio — A and C stay inside [0, 1]; T can exceed 1 on busy corridors.
         </div>
       </div>
       <div className="rounded-xl ring-1 ring-slate-600/80 bg-slate-700/40 px-5 py-4">
@@ -131,7 +132,7 @@ function RiskScoreTable({ allocations }) {
         </div>
         <div className="mt-3 grid grid-cols-2 lg:grid-cols-4 gap-2 text-[9px]">
           {[
-            { label: 'A — Accident history', color: 'text-red-800', note: 'accidents / 20 (ref)' },
+            { label: 'A — Accident history', color: 'text-red-800', note: 'accidents / 250 (ref = corridor upper bound)' },
             { label: 'T — Traffic intensity', color: 'text-amber-700', note: 'AADT / 50 000 (ref)' },
             { label: 'S — Speed contribution', color: 'text-blue-800', note: 'speed / 120 km/h (ref)' },
             { label: 'C — Pavement condition', color: 'text-emerald-800', note: '(5 − cond) / 4 · inverted' },

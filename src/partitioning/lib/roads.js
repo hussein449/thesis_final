@@ -126,11 +126,16 @@
  *   This input is NOT extracted from a published condition survey.
  *
  * Composite risk index — Poisson-derived (Step 4 of supervisor's revision):
- *   μ = 0.40 · (accidents / 20)
+ *   μ = 0.40 · (accidents / 250)
  *     + 0.25 · (AADT      / 50 000)
  *     + 0.20 · (speedKmh  / 120)
  *     + 0.15 · ((5 − condition) / 4)
- *   R = 1 − exp(−μ)        ∈ [0, 1 − e^(−1)]
+ *   R = 1 − exp(−μ)        ∈ (0, 1)
+ *
+ *   For M51 Khalde→Awali at the midpoint estimate of 200 acc/yr:
+ *     μ = 0.40·0.800 + 0.25·1.800 + 0.20·0.667 + 0.15·0.575
+ *       = 0.320 + 0.450 + 0.133 + 0.086 = 0.989
+ *     R = 1 − e^(−0.989) ≈ 0.628
  *
  *   References: Hauer 1997 "Observational Before-After Studies in Road
  *   Safety"; AASHTO HSM 2010 Ch. 10 (Poisson SPFs); Lord & Mannering 2010
@@ -225,7 +230,14 @@ export const ROADS = [
  *      "The statistical analysis of crash-frequency data".
  */
 const W1 = 0.40, W2 = 0.25, W3 = 0.20, W4 = 0.15
-const ACC_REF   = 20    // accidents/yr reference (urban arterial baseline)
+// ACC_REF is the upper bound of the corridor accident range (250 acc/yr,
+// = 12 % of Lebanon's 4 259/yr casualty crashes attributed to the M51
+// Khalde→Awali stretch by independent traffic-safety groups). With this
+// reference the midpoint estimate (200) gives A_norm = 0.8, comfortably
+// inside [0, 1]. The previous value (20, a per-road urban-arterial
+// baseline) was a leftover from the multi-road dataset and gave
+// A_norm ≈ 10 for the single corridor, which saturated R near 1.
+const ACC_REF   = 250   // accidents/yr reference (corridor-range upper bound)
 const AADT_REF  = 50000 // veh/day reference
 const SPEED_REF = 120   // km/h reference
 const COND_RANGE = 4    // condition scale is 1–5 → max deviation = 4

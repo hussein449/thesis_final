@@ -96,8 +96,8 @@ export function RoadDetailPopup({ item, onClose }) {
               </div>
             </div>
             <p className="mt-2 text-[9.5px] text-slate-600 leading-relaxed">
-              Each term normalised to [0,1] against reference values (20 acc/yr, 50k veh/day, 120 km/h, condition 1–5).
-              Ref: Hauer 1997; AASHTO HSM 2010 Ch.4.
+              Each term divided by a reference value (250 acc/yr — corridor upper bound; 50k veh/day; 120 km/h; condition 1–5).
+              A and C land inside [0, 1]; T can exceed 1 on busy corridors. Ref: Hauer 1997; AASHTO HSM 2010 Ch.4.
             </p>
           </div>
 
