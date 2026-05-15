@@ -80,30 +80,36 @@ export default function AllocationTable({ N }) {
         </button>
       </div>
       <div className="text-[11px] text-[var(--color-txt3)] leading-relaxed mb-3">
-        Each road gets a Poisson-derived risk score. The four normalised predictors (each in [0, 1])
-        are weighted into a Poisson mean μ — the expected accidents in a unit window — and the
-        score R is the probability of at least one accident.
+        The corridor is split into 1-km highway sections S<sub>i</sub>. Historical
+        data gives the corridor-wide daily total; each section then gets a risk
+        score R<sub>i,b</sub> from three manual features and a time-slot weight.
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <div className="rounded-lg ring-1 ring-slate-600/70 bg-slate-700/40 px-3 py-2.5 font-mono text-[11px] text-slate-200 leading-relaxed">
-          <div>μ = 0.40·A + 0.25·T + 0.20·S + 0.15·C</div>
-          <div className="mt-1">R = 1 − e<sup>−μ</sup>  &nbsp;<span className="text-slate-500">= P(N ≥ 1)</span></div>
-          <div className="mt-1 text-slate-500 text-[10px]">drones<sub>i</sub> ∝ R<sub>i</sub> via Hamilton largest-remainder method.</div>
+          <div>d<sub>total</sub>/day = N<sub>year</sub> / 365</div>
+          <div className="mt-1">
+            R<sub>i,b</sub> = a<sub>b</sub>·T<sub>i</sub> + c<sub>b</sub>·C<sub>i</sub> + m<sub>b</sub>·M<sub>i</sub>
+          </div>
+          <div className="mt-1 text-slate-500 text-[10px]">
+            N<sub>year</sub> = 200 acc/yr on M51 Khalde→Awali (range 150–250).
+            Weights (a, c, m) depend on the time slot b.
+          </div>
         </div>
         <div className="rounded-lg ring-1 ring-slate-600/70 bg-slate-700/40 px-3 py-2.5 text-[10.5px] leading-relaxed">
           <div className="grid grid-cols-[auto_1fr_auto] gap-x-2 gap-y-0.5">
-            <span className="font-mono text-slate-300">A</span>
-            <span className="text-slate-400">Accident history</span>
-            <span className="font-mono text-emerald-800 font-bold">w = 0.40</span>
-            <span className="font-mono text-slate-300">T</span>
-            <span className="text-slate-400">Traffic intensity (AADT)</span>
-            <span className="font-mono text-emerald-800 font-bold">w = 0.25</span>
-            <span className="font-mono text-slate-300">S</span>
-            <span className="text-slate-400">Operating speed</span>
-            <span className="font-mono text-emerald-800 font-bold">w = 0.20</span>
-            <span className="font-mono text-slate-300">C</span>
-            <span className="text-slate-400">Pavement condition (inverted)</span>
-            <span className="font-mono text-emerald-800 font-bold">w = 0.15</span>
+            <span className="font-mono text-slate-300">T<sub>i</sub></span>
+            <span className="text-slate-400">Traffic intensity</span>
+            <span className="font-mono text-emerald-800 font-bold">0–2</span>
+            <span className="font-mono text-slate-300">C<sub>i</sub></span>
+            <span className="text-slate-400">Curvature risk</span>
+            <span className="font-mono text-emerald-800 font-bold">0–2</span>
+            <span className="font-mono text-slate-300">M<sub>i</sub></span>
+            <span className="text-slate-400">Merging / on-off ramps</span>
+            <span className="font-mono text-emerald-800 font-bold">0–2</span>
+          </div>
+          <div className="mt-2 pt-2 border-t border-slate-600/60 text-[9.5px] text-slate-500 leading-snug">
+            5 time slots (b = 1…5): 00–06 (night) · 06–10 (AM rush) · 10–16 (day) ·
+            16–20 (PM rush) · 20–24 (late). Each row of weights sums to 1.
           </div>
         </div>
       </div>
@@ -197,7 +203,8 @@ export default function AllocationTable({ N }) {
       </div>
       <div className="mt-3 text-[9.5px] text-[var(--color-txt3)] leading-relaxed">
         <span className="text-[var(--color-txt2)]">Δ &gt; 0:</span> the risk-aware policy assigns more drones than uniform to that road.
-        Risk score R = 1 − e^(−μ) with Poisson mean μ = 0.40·A + 0.25·T + 0.20·S + 0.15·C; higher-risk roads gain drones, lower-risk roads cede them.
+        Section risk R<sub>i,b</sub> = a<sub>b</sub>·T<sub>i</sub> + c<sub>b</sub>·C<sub>i</sub> + m<sub>b</sub>·M<sub>i</sub> drives the per-section accident generator;
+        with a single corridor (R = 1) Uniform and Risk-aware allocate identically across roads, so the comparison shows up as patrol-density differences within M51 rather than between roads.
       </div>
     </div>
 
