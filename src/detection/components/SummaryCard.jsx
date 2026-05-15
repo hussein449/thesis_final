@@ -67,6 +67,24 @@ function computeSummary(results) {
     return av < bv ? a : b
   }
 
+  // ΔT(M) = T̄_uniform − T̄_risk-aware (§14). Positive ⇒ risk-aware faster.
+  // `a` is whichever policy key sorts first in Object.entries(results);
+  // `sign` normalises the subtraction to (uniform − risk-aware) regardless
+  // of iteration order.
+  const sign = a === 'uniform' ? +1 : a === 'riskAware' ? -1 : 0
+  const deltaPerN = merged
+    .filter((m) => m.a != null && m.b != null && sign !== 0)
+    .map((m) => ({
+      N: m.N,
+      deltaT: sign * (m.a - m.b),
+    }))
+  const meanDelta = deltaPerN.length > 0
+    ? deltaPerN.reduce((s, x) => s + x.deltaT, 0) / deltaPerN.length
+    : null
+  const bestDelta = deltaPerN.length > 0
+    ? deltaPerN.reduce((best, x) => (Math.abs(x.deltaT) > Math.abs(best.deltaT) ? x : best))
+    : null
+
   return {
     a, b,
     smallN: first.N,
@@ -77,6 +95,8 @@ function computeSummary(results) {
     smallN_b: first.b,
     largeN_a: last.a,
     largeN_b: last.b,
+    meanDelta,
+    bestDelta,
   }
 }
 
@@ -129,11 +149,56 @@ export default function SummaryCard({ results }) {
               ({summary.a}: {summary.largeN_a?.toFixed(0) ?? '—'} s vs {summary.b}: {summary.largeN_b?.toFixed(0) ?? '—'} s avg detection time).
             </span>
           </p>
+          {summary.meanDelta != null && (
+            <p>
+              Mean improvement{' '}
+              <span className="font-mono text-slate-100">ΔT̄</span>{' '}
+              <span className="text-slate-400">
+                = T̄<sub>uniform</sub> − T̄<sub>risk-aware</sub>
+              </span>{' '}
+              ={' '}
+              <span
+                className="font-mono font-medium"
+                style={{
+                  color:
+                    summary.meanDelta > 1
+                      ? POLICIES.riskAware.color
+                      : summary.meanDelta < -1
+                        ? POLICIES.uniform.color
+                        : '#cbd5e1',
+                }}
+              >
+                {summary.meanDelta > 0 ? '+' : ''}
+                {summary.meanDelta.toFixed(1)} s
+              </span>
+              {summary.bestDelta && (
+                <>
+                  {', best at '}
+                  <span className="font-mono text-slate-100">N = {summary.bestDelta.N}</span>
+                  {' ('}
+                  <span
+                    className="font-mono font-medium"
+                    style={{
+                      color:
+                        summary.bestDelta.deltaT > 0
+                          ? POLICIES.riskAware.color
+                          : POLICIES.uniform.color,
+                    }}
+                  >
+                    {summary.bestDelta.deltaT > 0 ? '+' : ''}
+                    {summary.bestDelta.deltaT.toFixed(1)} s
+                  </span>
+                  {').'}
+                </>
+              )}
+            </p>
+          )}
           <p className="text-slate-400">
-            Tradeoff: risk-aware concentrates drones on the highest-scoring corridors,
-            which improves response on those roads at the cost of leaving low-risk roads
-            unpatrolled when the fleet is small. Uniform pays a coverage tax on
-            high-risk roads but never abandons any single corridor.
+            Tradeoff: risk-aware patrol shortens UAV segments on high-risk sections
+            (Khalde, Awali) and stretches them across the open mid-corridor,
+            cutting T_alert where accidents are most likely. Uniform pays a
+            coverage tax at high-risk ends but never leaves any 1-km section
+            with a disproportionately long segment to traverse.
           </p>
         </div>
       )}

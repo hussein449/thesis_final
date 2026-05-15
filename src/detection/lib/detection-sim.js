@@ -290,6 +290,14 @@ export function baselineRoadRate(road) {
 export function simulateOnce({ allocation, params, seed }) {
   const P = { ...DEFAULT_PARAMS, ...params }
   const rng = makeRng(seed)
+  // Separate, policy-independent RNG for the accident schedule. Both
+  // Uniform and Risk-aware policies hit simulateOnce with the same
+  // seed for the same (trial, N) pair; using a dedicated RNG that does
+  // NOT see drone-setup consumption guarantees that the §14 metric
+  // requirement — "use the same accident events for both patrol
+  // strategies (fair comparison)" — holds even if future drone-setup
+  // changes consume different RNG counts per policy.
+  const accidentRng = makeRng((seed * 2654435761) | 0)
 
   // Per-road state. Patrol segments come from §6 of the simplified-model
   // report (uniform vs. risk-aware). Each UAV is assigned exactly one
@@ -337,7 +345,9 @@ export function simulateOnce({ allocation, params, seed }) {
   }
 
   // Pre-generate accident schedule via the section-time-slot model.
-  const accidents = generateAccidentSchedule(roadStates, P, rng)
+  // Uses the dedicated accidentRng so two policies running the same
+  // (trial, N) seed get an identical event sequence.
+  const accidents = generateAccidentSchedule(roadStates, P, accidentRng)
 
   // Step the simulation
   const availabilityHistory = []
@@ -523,6 +533,10 @@ export function simulateOnce({ allocation, params, seed }) {
 export function simulateWithDispatch({ allocation, params, seed, dispatchRule = 'nearest' }) {
   const P = { ...DEFAULT_PARAMS, ...params, enableOperational: true }
   const rng = makeRng(seed)
+  // Same separate-RNG trick as simulateOnce — keeps the accident
+  // sequence identical across dispatch rules / policies for fair
+  // comparison.
+  const accidentRng = makeRng((seed * 2654435761) | 0)
 
   const roadStates = allocation.map(({ road, drones: nDrones }) => {
     const path = buildRoadPath(road)
@@ -556,7 +570,7 @@ export function simulateWithDispatch({ allocation, params, seed, dispatchRule = 
   })
 
   // Pre-generate accidents via the section-time-slot model.
-  const accidents = generateAccidentSchedule(roadStates, P, rng)
+  const accidents = generateAccidentSchedule(roadStates, P, accidentRng)
   for (const a of accidents) a.dispatchedAt = null
 
   const availabilityHistory = []
@@ -646,6 +660,9 @@ export function simulateWithDispatch({ allocation, params, seed, dispatchRule = 
 export function simulateDetailedLog({ allocation, params, seed, sampleInterval = 60 }) {
   const P = { ...DEFAULT_PARAMS, ...params, enableOperational: true }
   const rng = makeRng(seed ?? 42)
+  // Dedicated accident RNG — matches simulateOnce so exported logs use
+  // the same event sequence as the Monte Carlo metrics.
+  const accidentRng = makeRng(((seed ?? 42) * 2654435761) | 0)
 
   const roadStates = allocation.map(({ road, drones: nDrones }) => {
     const path = buildRoadPath(road)
@@ -679,7 +696,7 @@ export function simulateDetailedLog({ allocation, params, seed, sampleInterval =
   })
 
   // Pre-generate accidents via the section-time-slot model.
-  const accidents = generateAccidentSchedule(roadStates, P, rng)
+  const accidents = generateAccidentSchedule(roadStates, P, accidentRng)
   for (let i = 0; i < accidents.length; i++) {
     accidents[i].accidentId = i + 1
     accidents[i].corridor = roadStates[accidents[i].roadIdx].road.name

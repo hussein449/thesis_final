@@ -13,7 +13,11 @@ import { runSweep } from './lib/monteCarlo'
 import { POLICIES } from './lib/policies'
 
 const DEFAULT_CONFIG = {
-  droneCountsText: '3, 5, 7, 10, 15, 20',
+  // §14 of the simplified-model report asks for the M = 1..20 saturation
+  // curve. This default samples 1 and 20 plus enough intermediate points
+  // to show the diminishing-returns knee (~5–10) without bloating the
+  // total trial count.
+  droneCountsText: '1, 2, 3, 5, 7, 10, 13, 16, 20',
   trialsPerPoint: 20,
   params: {
     totalTime: 1800,
