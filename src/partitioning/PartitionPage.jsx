@@ -436,7 +436,7 @@ export default function PartitionPage({ droneCount, onDroneCountChange }) {
             <SectionHeader
               icon="⬡"
               title="Map & Corridors"
-              description="M51 South Coastal Highway (Khalde → Sour) with drone allocation visualised as line width. Toggle heatmap mode to colour the corridor by risk score."
+              description="M51 South Coastal Highway (Khalde → Awali) with drone allocation visualised as line width. Toggle heatmap mode to colour the corridor by risk score."
             />
             <div className="grid grid-cols-1 lg:grid-cols-[1fr_420px] gap-5">
               <div className="rounded-2xl ring-1 ring-slate-600/80 bg-slate-700/40 overflow-hidden flex flex-col">

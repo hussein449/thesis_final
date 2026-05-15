@@ -16,10 +16,10 @@
  * and reproducible across policy comparisons.
  *
  * All distances are computed in meters using a local equirectangular
- * projection anchored at each road's first polyline vertex. For the 68 km
- * M51 corridor the worst-case east-west distortion is below 1 % between the
- * Khalde anchor (≈33.78°N) and the Sour terminus (≈33.29°N), well below the
- * 200 m sensing radius used by the detector.
+ * projection anchored at each road's first polyline vertex. For the ~28 km
+ * Khalde→Awali stretch of M51 the worst-case east-west distortion is well
+ * under 0.5 % between the Khalde anchor (≈33.78°N) and the Awali terminus
+ * (≈33.60°N), far below the 200 m sensing radius used by the detector.
  */
 
 // ---------------------------------------------------------------------------

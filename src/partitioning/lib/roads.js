@@ -3,10 +3,12 @@
  * ============================================================
  *
  * SINGLE-ROAD CONFIGURATION
- *   This dataset has been reduced to a single corridor — the M51 motorway
- *   (Lebanese South Coastal Highway, locally "أتستراد البحر" / "Autostrade
- *   el-Janoub"), from the Khalde interchange (just south of Beirut Rafic
- *   Hariri International Airport) to the northern entrance of Tyre (Sour).
+ *   This dataset has been reduced to a single corridor — the northern
+ *   stretch of the M51 motorway (Lebanese South Coastal Highway, locally
+ *   "أتستراد البحر" / "Autostrade el-Janoub"), from the Khalde interchange
+ *   (just south of Beirut Rafic Hariri International Airport) to the Awali
+ *   River bridge crossing — the administrative boundary between Mount
+ *   Lebanon and South Governorate, just north of Saida (Sidon).
  *
  *   With R = 1, both Uniform and Risk-aware allocation policies trivially
  *   assign all N drones to this single road. The detection-simulation engine
@@ -23,10 +25,10 @@
  *   │ Road identification  │ Real     │ OpenStreetMap (way ref=M51,     │
  *   │                      │          │ highway=motorway, name=أتستراد   │
  *   │                      │          │ البحر)                          │
- *   │ Length (68.6 km)     │ Real     │ OSRM v5 routing on OSM,         │
- *   │                      │          │ Khalde → Tyre N. entrance       │
+ *   │ Length (27.9 km)     │ Real     │ Polyline arc-length on OSM      │
+ *   │                      │          │ Khalde → Awali River bridge     │
  *   │ Polyline geometry    │ Real     │ OSRM simplified route geometry  │
- *   │                      │          │ (Ramer-Douglas-Peucker on OSM)  │
+ *   │                      │          │ truncated at the Awali bridge   │
  *   │ Speed limit (80)     │ Real     │ OSM maxspeed=80 on M51 ways +   │
  *   │                      │          │ Lebanese Traffic Law 243/2012   │
  *   │                      │          │ Art. 84 (motorway category)     │
@@ -34,9 +36,10 @@
  *   │                      │ (range)  │ — 200 000 veh/day enter Beirut  │
  *   │                      │          │ via the southern entrance;      │
  *   │                      │          │ corridor avg ≈ 90 000 veh/day.  │
- *   │ Annual accidents     │ Derived  │ Exposure-based allocation       │
- *   │                      │          │ (SPF, see below) from ISF       │
- *   │                      │          │ national totals + WHO 2018      │
+ *   │ Annual accidents     │ Derived  │ Independent traffic-safety      │
+ *   │                      │          │ groups: 8 %–12 % of Lebanon's   │
+ *   │                      │          │ 4 259/yr casualty crashes →     │
+ *   │                      │          │ 150–250 RTAs/yr on this stretch │
  *   │ Pavement condition   │ Estimate │ Modeller, from Mapillary/SV +   │
  *   │                      │          │ World Bank P160223 PAD (2017)   │
  *   │                      │          │ which flags national highway    │
@@ -46,18 +49,17 @@
  * ROAD IDENTIFICATION
  *   OSM ref=M51, highway=motorway, name=أتستراد البحر ("Sea Highway"),
  *   alt_name="Rue 23". Confirmed motorway from Khalde interchange south to
- *   Tyre northern roundabout. Way IDs include 27114211, 30733074, 32039956,
- *   32040428, 32040431, 32040433 (and others). Queried via the Overpass API:
+ *   the Awali River viaduct. Way IDs include 27114211, 30733074, 32039956,
+ *   32040428 (and others). Queried via the Overpass API:
  *     way["ref"="M51"]["highway"="motorway"]
  *   © OpenStreetMap contributors, ODbL — https://www.openstreetmap.org/copyright
  *
- * LENGTH (68.6 km)
- *   Calculated by the OSRM v5 public routing API on OSM data, from the
- *   Khalde M51 interchange (33.7780°N, 35.4904°E) to the Tyre northern
- *   entrance roundabout (33.2950°N, 35.2150°E). Distance returned by:
- *     https://router.project-osrm.org/route/v1/driving/
- *       35.4904,33.7780;35.2150,33.2950?overview=full&geometries=geojson
- *   → distance: 68 591.2 m (≈ 68.6 km), duration: 3 410 s (≈ 57 min).
+ * LENGTH (27.9 km)
+ *   Arc-length of the OSRM-routed polyline below, from the Khalde M51
+ *   interchange (33.7780°N, 35.4904°E) to the Awali River bridge
+ *   (33.5963°N, 35.3727°E). The Awali crossing is the administrative
+ *   boundary between Mount Lebanon and South Governorate and a natural
+ *   terminus for the high-traffic Beirut→Saida half of the M51.
  *
  * SPEED LIMIT (80 km/h)
  *   OSM `maxspeed=80` tag on the M51 motorway ways. Cross-checked with
@@ -71,16 +73,17 @@
  *   (2017): approximately **200 000 vehicles enter the Greater Beirut Area
  *   via the southern entrance every day** (i.e., at the Khalde interchange).
  *     https://documents.worldbank.org/curated/en/362361507193381282
- *   Volume decreases along the corridor as exits diverge to Damour, Saadiyat,
- *   Jiyeh, Saida, Sarafand, etc. Saida is the second-largest city in Lebanon,
- *   so traffic remains substantial past it; volume drops sharply between
- *   Saida and Tyre. A flow-weighted average of ~90 000 veh/day is used as
- *   the single corridor-level AADT figure for risk scoring.
+ *   Volume decreases gradually along the corridor as exits diverge to
+ *   Damour, Saadiyat, Jiyeh, Rmeileh, etc. The Khalde→Awali half retains
+ *   the heaviest flow because most southern-suburb commuters terminate
+ *   before the Awali boundary. A flow-weighted average of ~90 000 veh/day
+ *   is used as the single corridor-level AADT figure for risk scoring.
  *
  * ANNUAL ACCIDENTS (200 RTA/yr — midpoint of 150–250 corridor range)
  *   Estimated by independent traffic-safety groups as ≈ 8 %–12 % of national
  *   serious transit casualties attributable to the high-speed, poorly lit
- *   M51 Southern Coastal Highway corridor (Khalde → Awali / Saida → Sour).
+ *   M51 Southern Coastal Highway corridor (specifically the Khalde → Awali
+ *   stretch — the northern, highest-flow half of the M51).
  *
  *   Real inputs used in the allocation:
  *     • Baseline national average of officially reported traffic crashes
@@ -96,7 +99,7 @@
  *         8 %  of 4 259 ≈ 341 → lower-bound exposure
  *         12 % of 4 259 ≈ 511 → upper-bound exposure
  *       Independent traffic-safety groups report ≈ 150–250 accidents/yr on
- *       the specific Khalde-Sour M51 stretch (the figure used for risk
+ *       the specific Khalde→Awali M51 stretch (the figure used for risk
  *       analysis on this corridor), reflecting that not all casualty-class
  *       crashes in the national total are coded to this mainline.
  *
@@ -119,7 +122,7 @@
  *       https://documents1.worldbank.org/curated/en/210611486651815142/pdf/
  *         Lebanon-Roads-Employment-PAD-P160223-01262017.pdf
  *     • Visible cracking, rutting, and patchy resurfacing on the M51
- *       between Damour and Sarafand (Mapillary / SV, 2023).
+ *       between Damour and the Awali River bridge (Mapillary / SV, 2023).
  *   This input is NOT extracted from a published condition survey.
  *
  * Composite risk index — Poisson-derived (Step 4 of supervisor's revision):
@@ -137,42 +140,44 @@
 
 export const ROADS = [
   {
-    id: 'm51_khalde_sour',
-    name: 'M51 Khalde → Sour (South Coastal Highway)',
-    shortName: 'M51 Khalde-Sour',
+    id: 'm51_khalde_awali',
+    name: 'M51 Khalde → Awali (South Coastal Highway, northern stretch)',
+    shortName: 'M51 Khalde-Awali',
     color: '#ef4444',
-    // Annual severe accidents on the Khalde-Sour M51 corridor.
+    // Annual severe accidents on the Khalde-Awali M51 stretch.
     // Range 150–250 (≈ 8 %–12 % of Lebanon's 4 259/yr casualty crashes,
     // per independent traffic-safety groups). 200 is the midpoint.
     accidents: 200,
     accidentsRange: [150, 250],
     aadt: 90000,
     speedKmh: 80,
-    lengthKm: 68.6,
+    lengthKm: 27.9,
     condition: 2.7,
     source:
       'Identification: OSM way ref=M51, highway=motorway, name=أتستراد البحر ' +
-      '(Sea Highway). Length 68.6 km: OSRM v5 routing on OSM, Khalde interchange ' +
-      '(33.7780°N, 35.4904°E) → Tyre north entrance (33.2950°N, 35.2150°E). ' +
+      '(Sea Highway). Length 27.9 km: polyline arc-length from the Khalde ' +
+      'interchange (33.7780°N, 35.4904°E) to the Awali River bridge ' +
+      '(33.5963°N, 35.3727°E). ' +
       'Speed 80 km/h: OSM maxspeed=80 + Lebanese Traffic Law 243/2012, Art. 84. ' +
       'AADT 90 000 veh/day: corridor average from World Bank GBPTP P160224 (2017) ' +
       '(200 000 veh/day at Khalde southern entrance to Beirut; decreasing southward). ' +
       'Annual RTAs 200 (range 150–250): ≈ 8 %–12 % of Lebanon\'s 4 259 casualty crashes/yr ' +
-      'attributed to the Khalde-Sour M51 corridor by independent traffic-safety groups; ' +
+      'attributed to the Khalde-Awali M51 stretch by independent traffic-safety groups; ' +
       'cross-references: Open Data Lebanon Crash Repository, L\'Orient Today, LBCI Lebanon ' +
       'Traffic Report, AUB Data-Visualization, UN Road Safety Assessment for Lebanon. ' +
       'Condition 2.7/5: visual estimate from Mapillary / Street View, ' +
       'consistent with the rehabilitation backlog documented in World Bank P160223 PAD (2017). ' +
-      'Geometry: OSRM simplified route geometry on OSM motorway ways ' +
-      '(© OSM contributors, ODbL — https://www.openstreetmap.org/copyright).',
+      'Geometry: OSRM simplified route geometry on OSM motorway ways, truncated at the ' +
+      'Awali bridge (© OSM contributors, ODbL — https://www.openstreetmap.org/copyright).',
     description:
-      'High-speed coastal motorway running the full length of the southern Lebanese ' +
-      'littoral, from the Khalde interchange (south of Beirut Rafic Hariri International ' +
-      'Airport) through Damour, Jiyeh, Saadiyat, Rmeileh, Saida (Sidon), Sarafand, ' +
-      'Adloun, and into the northern entrance of Tyre (Sour). Mixed motorway / express ' +
-      'sections; recognized accident blackspot at the Saida bypass.',
-    // 24-point simplified polyline from OSRM v5 (Ramer-Douglas-Peucker simplification
-    // of the OSM-routed motorway). Listed as [lat, lon] for the simulation engine.
+      'High-speed coastal motorway running south from the Khalde interchange (just ' +
+      'south of Beirut Rafic Hariri International Airport), through Damour, Jiyeh, ' +
+      'Saadiyat, and Rmeileh, terminating at the Awali River bridge — the boundary ' +
+      'between Mount Lebanon and South Governorate, immediately north of Saida (Sidon). ' +
+      'This is the highest-flow, poorly-lit half of the M51 corridor and the focus of ' +
+      'the patrol study.',
+    // 13-point simplified polyline (OSRM v5 / OSM motorway ways), truncated at
+    // the Awali River bridge. Listed as [lat, lon] for the simulation engine.
     polyline: [
       [33.778271, 35.490479], // Khalde M51 interchange (start)
       [33.781166, 35.480057],
@@ -186,18 +191,7 @@ export const ROADS = [
       [33.646377, 35.401627], // Saadiyat
       [33.611102, 35.405354],
       [33.603075, 35.391068], // Rmeileh
-      [33.537141, 35.371904], // Saida north
-      [33.519123, 35.362657], // Saida central bypass (blackspot)
-      [33.499466, 35.343638], // Saida south
-      [33.475727, 35.337821],
-      [33.461952, 35.317051], // Sarafand
-      [33.426423, 35.305518],
-      [33.396495, 35.276381], // Adloun
-      [33.328092, 35.250492],
-      [33.295170, 35.231613], // Sour approach
-      [33.288029, 35.226154],
-      [33.289530, 35.220442],
-      [33.293939, 35.220765], // Sour northern entrance (end)
+      [33.596300, 35.372700], // Awali River bridge (end)
     ],
   },
 ]
@@ -320,7 +314,7 @@ export function allocateDrones(totalDrones) {
 // Map defaults
 // ---------------------------------------------------------------------------
 
-// Centred at the midpoint of the M51 corridor (between Khalde and Sour),
-// with a zoom that fits the full ~70 km route in a single view.
-export const BEIRUT_CENTER = [33.5366, 35.3553]
-export const BEIRUT_ZOOM = 10
+// Centred at the midpoint of the Khalde→Awali stretch of the M51, with a
+// zoom that fits the full ~28 km route in a single view.
+export const BEIRUT_CENTER = [33.6873, 35.4316]
+export const BEIRUT_ZOOM = 11
