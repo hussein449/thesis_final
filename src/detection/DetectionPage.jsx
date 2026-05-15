@@ -389,7 +389,11 @@ export default function DetectionPage() {
 
         {/* ── Dispatch comparison ── */}
         {activeSection === 'dispatch' && (
-          <DispatchComparison />
+          <DispatchComparison
+            fleetSizes={counts}
+            trialsPerPoint={config.trialsPerPoint}
+            params={config.params}
+          />
         )}
 
         {/* ── Data Sources ── */}

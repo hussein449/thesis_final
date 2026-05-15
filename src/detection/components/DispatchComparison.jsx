@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useEffect, useState } from 'react'
 import {
   LineChart, Line, BarChart, Bar,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ReferenceLine,
@@ -29,24 +29,31 @@ const DISPATCH_STRATEGIES = [
   },
 ]
 
-const FLEET_SIZES = [3, 5, 7, 10, 15, 20]
-const TRIALS = 10
 const grid = '#1e293b'
 const textColor = '#64748b'
 
-// 7 simulated days at the corridor's real ~200 accidents/yr — same
-// rationale as SensitivityPlots: enough events per trial to compare
-// dispatch rules meaningfully without locking the page on a 30-day sim.
-function computeDispatchSweep() {
-  const params = { ...DEFAULT_PARAMS, totalTime: 7 * 86400 }
-  // Use risk-aware allocation (standard)
-  const data = FLEET_SIZES.map((N) => {
+// Uses the fleet sizes, trials-per-point, and sim params from the
+// Configure page. Allocation is fixed to risk-aware (the standard
+// baseline) — only the dispatch rule varies here. Patrol segmentation
+// follows the risk-aware policy's patrolMode.
+function computeDispatchSweep({ fleetSizes, trialsPerPoint, params }) {
+  const fullParams = {
+    ...DEFAULT_PARAMS,
+    ...params,
+    patrolMode: POLICIES.riskAware.patrolMode ?? 'risk-aware',
+  }
+  return fleetSizes.map((N) => {
     const allocation = POLICIES.riskAware.allocate(N)
     const row = { N }
     for (const ds of DISPATCH_STRATEGIES) {
       let totalDt = 0, count = 0, missed = 0, total = 0
-      for (let t = 0; t < TRIALS; t++) {
-        const r = simulateWithDispatch({ allocation, params, seed: 42 + t * 31, dispatchRule: ds.key })
+      for (let t = 0; t < trialsPerPoint; t++) {
+        const r = simulateWithDispatch({
+          allocation,
+          params: fullParams,
+          seed: 42 + t * 31 + N * 7919,
+          dispatchRule: ds.key,
+        })
         r.detectionTimes.forEach((dt) => { totalDt += dt; count++ })
         missed += r.nMissed
         total += r.nTotal
@@ -56,7 +63,6 @@ function computeDispatchSweep() {
     }
     return row
   })
-  return data
 }
 
 function CustomTooltip({ active, payload, label, xLabel = 'N', xUnit = ' drones' }) {
@@ -77,8 +83,40 @@ function CustomTooltip({ active, payload, label, xLabel = 'N', xUnit = ' drones'
   )
 }
 
-export default function DispatchComparison() {
-  const data = useMemo(() => computeDispatchSweep(), [])
+export default function DispatchComparison({ fleetSizes, trialsPerPoint, params }) {
+  const safeFleetSizes = (fleetSizes && fleetSizes.length > 0)
+    ? fleetSizes
+    : [3, 5, 7, 10, 15, 20]
+  const safeTrials = trialsPerPoint && trialsPerPoint > 0 ? trialsPerPoint : 10
+  const safeParams = params ?? {}
+  // Cheap stable key — avoids re-running the sweep on unrelated parent
+  // re-renders while still picking up config changes.
+  const depKey = `${safeFleetSizes.join(',')}|${safeTrials}|${JSON.stringify(safeParams)}`
+
+  // Deferred computation: render the "computing" placeholder first, then
+  // run the synchronous sweep (heavy with 9 N × 20 trials × 3 strategies
+  // × 30-day default). Without the setTimeout(0) detour the browser
+  // would freeze before the user sees any feedback.
+  const [data, setData] = useState(null)
+  useEffect(() => {
+    setData(null)
+    const id = setTimeout(() => {
+      setData(computeDispatchSweep({
+        fleetSizes: safeFleetSizes,
+        trialsPerPoint: safeTrials,
+        params: safeParams,
+      }))
+    }, 0)
+    return () => clearTimeout(id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [depKey])
+
+  const totalTimeSec = safeParams.totalTime ?? DEFAULT_PARAMS.totalTime
+  const simDays = totalTimeSec / 86400
+  const durLabel = simDays >= 1
+    ? `${simDays.toFixed(simDays >= 10 ? 0 : 1)} simulated day${simDays === 1 ? '' : 's'}`
+    : `${(totalTimeSec / 3600).toFixed(1)} h`
+  const droneSpeed = safeParams.droneSpeed ?? DEFAULT_PARAMS.droneSpeed
 
   return (
     <div className="space-y-4">
@@ -89,8 +127,9 @@ export default function DispatchComparison() {
         </div>
         <div className="text-[11px] text-[var(--color-txt3)] leading-relaxed max-w-3xl">
           When an accident occurs, a drone on the same road is actively selected and diverted.
-          Detection time equals travel time at patrol speed ({DEFAULT_PARAMS.droneSpeed} m/s).
-          Allocation: Risk-aware (Hamilton method). {TRIALS} trials per fleet size, 30 min sim time.
+          Detection time equals travel time at patrol speed ({droneSpeed} m/s).
+          Allocation: Risk-aware (Hamilton method). Sweep uses the Configure-page fleet sizes
+          ({safeFleetSizes.join(', ')}), {safeTrials} trials per fleet size, {durLabel} per trial.
         </div>
         {/* Strategy cards */}
         <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -111,6 +150,16 @@ export default function DispatchComparison() {
         </div>
       </div>
 
+      {data === null && (
+        <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-card)] px-5 py-8 text-center">
+          <div className="inline-flex items-center gap-2 text-[11px] text-[var(--color-txt2)]">
+            <span className="inline-block w-3 h-3 rounded-full bg-blue-500/30 animate-pulse" />
+            Computing dispatch sweep — {safeFleetSizes.length} fleet sizes × {safeTrials} trials × {DISPATCH_STRATEGIES.length} strategies. This may take a minute on the 30-day default.
+          </div>
+        </div>
+      )}
+
+      {data !== null && (
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Mean detection time vs N */}
         <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-card)] p-4">
@@ -165,6 +214,7 @@ export default function DispatchComparison() {
           </ResponsiveContainer>
         </div>
       </div>
+      )}
 
       {/* Interpretation */}
       <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-card)] px-5 py-3">
