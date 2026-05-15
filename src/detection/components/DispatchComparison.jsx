@@ -1,13 +1,13 @@
-import { useEffect, useState } from 'react'
 import {
   LineChart, Line, BarChart, Bar,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ReferenceLine,
   ResponsiveContainer,
 } from 'recharts'
-import { simulateWithDispatch, DEFAULT_PARAMS } from '../lib/detection-sim'
-import { POLICIES } from '../lib/policies'
+import { DEFAULT_PARAMS } from '../lib/detection-sim'
 
 // ── Dispatch strategy definitions ────────────────────────────────────────────
+// Keys must match the rule names used by simulateWithDispatch and the
+// columns produced by runDispatchSweep in monteCarlo.js.
 const DISPATCH_STRATEGIES = [
   {
     key: 'nearest',
@@ -32,39 +32,6 @@ const DISPATCH_STRATEGIES = [
 const grid = '#1e293b'
 const textColor = '#64748b'
 
-// Uses the fleet sizes, trials-per-point, and sim params from the
-// Configure page. Allocation is fixed to risk-aware (the standard
-// baseline) — only the dispatch rule varies here. Patrol segmentation
-// follows the risk-aware policy's patrolMode.
-function computeDispatchSweep({ fleetSizes, trialsPerPoint, params }) {
-  const fullParams = {
-    ...DEFAULT_PARAMS,
-    ...params,
-    patrolMode: POLICIES.riskAware.patrolMode ?? 'risk-aware',
-  }
-  return fleetSizes.map((N) => {
-    const allocation = POLICIES.riskAware.allocate(N)
-    const row = { N }
-    for (const ds of DISPATCH_STRATEGIES) {
-      let totalDt = 0, count = 0, missed = 0, total = 0
-      for (let t = 0; t < trialsPerPoint; t++) {
-        const r = simulateWithDispatch({
-          allocation,
-          params: fullParams,
-          seed: 42 + t * 31 + N * 7919,
-          dispatchRule: ds.key,
-        })
-        r.detectionTimes.forEach((dt) => { totalDt += dt; count++ })
-        missed += r.nMissed
-        total += r.nTotal
-      }
-      row[`${ds.key}_avg`] = count > 0 ? Math.round(totalDt / count) : null
-      row[`${ds.key}_missedPct`] = total > 0 ? +((missed / total) * 100).toFixed(1) : 0
-    }
-    return row
-  })
-}
-
 function CustomTooltip({ active, payload, label, xLabel = 'N', xUnit = ' drones' }) {
   if (!active || !payload?.length) return null
   return (
@@ -83,40 +50,25 @@ function CustomTooltip({ active, payload, label, xLabel = 'N', xUnit = ' drones'
   )
 }
 
-export default function DispatchComparison({ fleetSizes, trialsPerPoint, params }) {
-  const safeFleetSizes = (fleetSizes && fleetSizes.length > 0)
-    ? fleetSizes
-    : [3, 5, 7, 10, 15, 20]
-  const safeTrials = trialsPerPoint && trialsPerPoint > 0 ? trialsPerPoint : 10
+/**
+ * Pure renderer. Receives `data` precomputed by runDispatchSweep() in
+ * monteCarlo.js — runs only when the user clicks "Run sweep" on the
+ * Configure page. No auto-compute on tab switch.
+ *
+ * Props:
+ *   data:    [{ N, nearest_avg, nearest_missedPct, ... }, ...] | null
+ *   params:  the sim params used for the sweep (for display only)
+ *   running: true while the main "Run sweep" is in progress
+ */
+export default function DispatchComparison({ data, params, running }) {
   const safeParams = params ?? {}
-  // Cheap stable key — avoids re-running the sweep on unrelated parent
-  // re-renders while still picking up config changes.
-  const depKey = `${safeFleetSizes.join(',')}|${safeTrials}|${JSON.stringify(safeParams)}`
-
-  // Deferred computation: render the "computing" placeholder first, then
-  // run the synchronous sweep (heavy with 9 N × 20 trials × 3 strategies
-  // × 30-day default). Without the setTimeout(0) detour the browser
-  // would freeze before the user sees any feedback.
-  const [data, setData] = useState(null)
-  useEffect(() => {
-    setData(null)
-    const id = setTimeout(() => {
-      setData(computeDispatchSweep({
-        fleetSizes: safeFleetSizes,
-        trialsPerPoint: safeTrials,
-        params: safeParams,
-      }))
-    }, 0)
-    return () => clearTimeout(id)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [depKey])
-
   const totalTimeSec = safeParams.totalTime ?? DEFAULT_PARAMS.totalTime
   const simDays = totalTimeSec / 86400
   const durLabel = simDays >= 1
     ? `${simDays.toFixed(simDays >= 10 ? 0 : 1)} simulated day${simDays === 1 ? '' : 's'}`
     : `${(totalTimeSec / 3600).toFixed(1)} h`
   const droneSpeed = safeParams.droneSpeed ?? DEFAULT_PARAMS.droneSpeed
+  const fleetSizes = data ? data.map((r) => r.N) : []
 
   return (
     <div className="space-y-4">
@@ -128,8 +80,10 @@ export default function DispatchComparison({ fleetSizes, trialsPerPoint, params 
         <div className="text-[11px] text-[var(--color-txt3)] leading-relaxed max-w-3xl">
           When an accident occurs, a drone on the same road is actively selected and diverted.
           Detection time equals travel time at patrol speed ({droneSpeed} m/s).
-          Allocation: Risk-aware (Hamilton method). Sweep uses the Configure-page fleet sizes
-          ({safeFleetSizes.join(', ')}), {safeTrials} trials per fleet size, {durLabel} per trial.
+          Allocation: Risk-aware (Hamilton method).{' '}
+          {data
+            ? <>Sweep ran on fleet sizes ({fleetSizes.join(', ')}), {durLabel} per trial.</>
+            : <>Click <strong className="text-slate-300">Run sweep</strong> on the Configure page to compute the comparison.</>}
         </div>
         {/* Strategy cards */}
         <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -150,16 +104,22 @@ export default function DispatchComparison({ fleetSizes, trialsPerPoint, params 
         </div>
       </div>
 
-      {data === null && (
+      {data == null && (
         <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-card)] px-5 py-8 text-center">
-          <div className="inline-flex items-center gap-2 text-[11px] text-[var(--color-txt2)]">
-            <span className="inline-block w-3 h-3 rounded-full bg-blue-500/30 animate-pulse" />
-            Computing dispatch sweep — {safeFleetSizes.length} fleet sizes × {safeTrials} trials × {DISPATCH_STRATEGIES.length} strategies. This may take a minute on the 30-day default.
-          </div>
+          {running ? (
+            <div className="inline-flex items-center gap-2 text-[11px] text-[var(--color-txt2)]">
+              <span className="inline-block w-3 h-3 rounded-full bg-blue-500/30 animate-pulse" />
+              Sweep in progress — dispatch comparison will appear when the run finishes.
+            </div>
+          ) : (
+            <div className="text-[11px] text-[var(--color-txt2)]">
+              No dispatch data yet. Go to <strong className="text-slate-200">Configure</strong> and click <strong className="text-slate-200">Run sweep</strong> — the dispatch comparison computes alongside the main Monte Carlo run.
+            </div>
+          )}
         </div>
       )}
 
-      {data !== null && (
+      {data != null && (
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Mean detection time vs N */}
         <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-card)] p-4">
