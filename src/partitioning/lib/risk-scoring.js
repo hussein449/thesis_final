@@ -23,7 +23,7 @@
  */
 
 import { buildSections, DEFAULT_SECTION_LENGTH_KM } from './sections'
-import { buildRoadPath, positionAt } from '../../detection/lib/detection-sim'
+import { buildRoadPath, positionAt } from '../../lib/geometry'
 
 // ---------------------------------------------------------------------------
 // Time slots and weight table (verbatim from §3 of the model report)

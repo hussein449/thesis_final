@@ -100,7 +100,7 @@ export default function SweepConfig({
 
       <div className="p-5">
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
         <TextField
           label="Drone counts"
           value={config.droneCountsText}
@@ -122,6 +122,14 @@ export default function SweepConfig({
           hint="per trial"
           min={1}
           max={120}
+        />
+        <NumberField
+          label="Trial start hour"
+          value={params.simStartHour}
+          onChange={(v) => setParam('simStartHour', Math.max(0, Math.min(23, v)))}
+          hint="time-of-day slot (0–23)"
+          min={0}
+          max={23}
         />
         <NumberField
           label="Accident multiplier"

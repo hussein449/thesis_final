@@ -4,13 +4,23 @@ import {
   buildRoadPath,
   positionAt,
   unprojectMeters,
-  baselineRoadRate,
   DEFAULT_PARAMS,
   makeRng,
 } from '../lib/detection-sim'
 import { POLICIES } from '../lib/policies'
 import { BEIRUT_CENTER, BEIRUT_ZOOM, computeRiskScore } from '../../partitioning/lib/roads'
 import { buildSections, DEFAULT_SECTION_LENGTH_KM } from '../../partitioning/lib/sections'
+import {
+  defaultSectionScores,
+  computeRiskMatrix,
+  dailyAccidentRate,
+  TIME_SLOTS,
+  timeSlotForHour,
+} from '../../partitioning/lib/risk-scoring'
+import {
+  computeSlotProbabilities,
+  computeSectionTimeSlotRates,
+} from '../../partitioning/lib/accident-generator'
 
 // Deep green → deep amber → deep red gradient — readable against the
 // cream/taupe canvas without the washed-out pastel look of the original.
@@ -152,6 +162,12 @@ function drawSectionGrid(map, rs, sectionLengthKm = DEFAULT_SECTION_LENGTH_KM) {
 function makeRoadState(allocation, params, rng) {
   return allocation.map(({ road, drones: nDrones }) => {
     const path = buildRoadPath(road)
+    // Build the section-time-slot rate model for this road.
+    const scores = defaultSectionScores(road)
+    const riskMatrix = computeRiskMatrix(scores)
+    const slotProbs = computeSlotProbabilities(riskMatrix)
+    const rateMatrix = computeSectionTimeSlotRates(dailyAccidentRate(road.accidents), slotProbs)
+
     const droneStates = []
     if (nDrones > 0) {
       const segLen = path.totalLength / nDrones
@@ -186,7 +202,7 @@ function makeRoadState(allocation, params, rng) {
       road,
       path,
       droneStates,
-      baseRate: baselineRoadRate(road) * params.accidentRateMultiplier * DEMO_RATE_BOOST,
+      rateMatrix,    // [{ sectionIndex, sStart, sEnd, lambda[5] }, …] — per-day, per-slot
     }
   })
 }
@@ -546,33 +562,52 @@ export default function LiveMap({ N, policyKey, params: paramsProp }) {
         }
       }
 
-      // Generate accidents (Poisson) per road
+      // Generate accidents using the section-time-slot Poisson model.
+      // Current hour-of-day = simStartHour + simT/3600 (mod 24).
+      const simHour = ((st.params.simStartHour ?? 0) + st.simT / 3600) % 24
+      const slot = timeSlotForHour(simHour)
+      const slotIdx = slot.index - 1
+      const slotDurationSec = (slot.endHour - slot.startHour) * 3600
+      // DEMO_RATE_BOOST × accidentRateMultiplier together accelerate the demo
+      // beyond the real-world rate so events arrive on a watchable cadence.
+      const boost = (st.params.accidentRateMultiplier ?? 1) * DEMO_RATE_BOOST
       for (let r = 0; r < st.roadStates.length; r++) {
         const rs = st.roadStates[r]
-        const expected = rs.baseRate * dt
-        if (st.rng() < expected) {
-          const s = st.rng() * rs.path.totalLength
-          const seq = st.nextAccidentSeq++
-          const accId = `A${String(seq).padStart(4, '0')}`
-          st.accidents.push({
-            id: accId,
-            seq,
-            roadIdx: r,
-            s,
-            time: st.simT,
-            detected: false,
-            missed: false,
-          })
-          st.totalGenerated++
-          st.events.push({
-            time_s: +st.simT.toFixed(1),
-            kind: 'accident',
-            accident_id: accId,
-            corridor: rs.road.name,
-            uav_id: '',
-            detection_time_s: '',
-            note: 'Accident occurred',
-          })
+        for (const row of rs.rateMatrix) {
+          // λ_{i,b}/day → per-second within the slot:
+          const lambdaPerSec = row.lambda[slotIdx] / slotDurationSec
+          const expected = lambdaPerSec * boost * dt
+          if (st.rng() < expected) {
+            // Uniform position within the section:
+            const sKm = row.sStart + st.rng() * (row.sEnd - row.sStart)
+            const s = sKm * 1000
+            const seq = st.nextAccidentSeq++
+            const accId = `A${String(seq).padStart(4, '0')}`
+            st.accidents.push({
+              id: accId,
+              seq,
+              roadIdx: r,
+              s,
+              sectionIndex: row.sectionIndex,
+              timeSlot: slot.index,
+              tau: simHour,
+              time: st.simT,
+              detected: false,
+              missed: false,
+            })
+            st.totalGenerated++
+            st.events.push({
+              time_s: +st.simT.toFixed(1),
+              kind: 'accident',
+              accident_id: accId,
+              corridor: rs.road.name,
+              section: `S${row.sectionIndex}`,
+              slot: `${slot.index} (${slot.label})`,
+              uav_id: '',
+              detection_time_s: '',
+              note: `Accident in S${row.sectionIndex} during slot ${slot.index}`,
+            })
+          }
         }
       }
 
@@ -661,6 +696,16 @@ export default function LiveMap({ N, policyKey, params: paramsProp }) {
   const policyMeta = POLICIES[policyKey]
   const policyColor = policyMeta?.color ?? '#94a3b8'
 
+  // Current hour-of-day and time slot, derived from simStartHour + elapsed.
+  const startHour = (paramsProp?.simStartHour ?? DEFAULT_PARAMS.simStartHour) ?? 0
+  const currentHour = ((startHour + (st?.simT ?? 0) / 3600) % 24 + 24) % 24
+  const currentHourLabel = `${String(Math.floor(currentHour)).padStart(2, '0')}:${String(
+    Math.floor((currentHour - Math.floor(currentHour)) * 60)
+  ).padStart(2, '0')}`
+  const currentSlot = TIME_SLOTS.find(
+    (s) => currentHour >= s.startHour && currentHour < s.endHour
+  ) ?? TIME_SLOTS[TIME_SLOTS.length - 1]
+
   // Refined, calmer palette for the KPI cards. Each entry uses a soft
   // background tint and a slate-leaning value colour rather than full
   // saturation, so the strip reads as a unified chart instead of six
@@ -688,6 +733,13 @@ export default function LiveMap({ N, policyKey, params: paramsProp }) {
           </span>
           <span className="text-slate-600 text-[10px]">/</span>
           <span className="text-[10.5px] font-mono text-slate-400">N = {N}</span>
+          <span className="text-slate-600 text-[10px]">/</span>
+          <span
+            className="text-[10.5px] font-mono text-cyan-700"
+            title={`Time-of-day clock — slot ${currentSlot.index}: ${currentSlot.label} (${String(currentSlot.startHour).padStart(2, '0')}:00–${String(currentSlot.endHour).padStart(2, '0')}:00). Rate distribution per section follows P(i | b) for this slot.`}
+          >
+            {currentHourLabel} · slot {currentSlot.index}
+          </span>
         </div>
         <div className="ml-auto flex items-center gap-1.5">
           <button

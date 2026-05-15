@@ -23,72 +23,37 @@
  */
 
 // ---------------------------------------------------------------------------
-// Geometry helpers
+// Geometry helpers (live in src/lib/geometry.js — re-exported here so existing
+// importers of detection-sim continue to work)
 // ---------------------------------------------------------------------------
 
-/** Convert lat/lon to local meters (x, y) relative to a reference point. */
-export function projectToMeters(lat, lon, refLat, refLon) {
-  const cosRef = Math.cos((refLat * Math.PI) / 180)
-  const dx = (lon - refLon) * 111000 * cosRef
-  const dy = (lat - refLat) * 111000
-  return [dx, dy]
-}
+export {
+  projectToMeters,
+  unprojectMeters,
+  buildRoadPath,
+  positionAt,
+} from '../../lib/geometry'
 
-/** Convert local meters back to lat/lon. */
-export function unprojectMeters(x, y, refLat, refLon) {
-  const cosRef = Math.cos((refLat * Math.PI) / 180)
-  const lat = refLat + y / 111000
-  const lon = refLon + x / (111000 * cosRef)
-  return [lat, lon]
-}
+import {
+  buildRoadPath,
+  positionAt,
+} from '../../lib/geometry'
 
-/**
- * Build a parametric path over a road polyline. Returns:
- *   - segments: per-segment metadata (start arc length, end arc length, ...)
- *   - totalLength: total road length in meters
- *   - refLat / refLon: projection anchor (first polyline vertex)
- */
-export function buildRoadPath(road) {
-  const refLat = road.polyline[0][0]
-  const refLon = road.polyline[0][1]
-  const projected = road.polyline.map(([la, lo]) =>
-    projectToMeters(la, lo, refLat, refLon)
-  )
+// ---------------------------------------------------------------------------
+// Section-time-slot accident model (§4-§5 of the simplified-model report)
+// ---------------------------------------------------------------------------
 
-  const segments = []
-  let acc = 0
-  for (let i = 1; i < projected.length; i++) {
-    const [x1, y1] = projected[i - 1]
-    const [x2, y2] = projected[i]
-    const len = Math.hypot(x2 - x1, y2 - y1)
-    segments.push({
-      start: acc,
-      end: acc + len,
-      length: len,
-      p1: projected[i - 1],
-      p2: projected[i],
-    })
-    acc += len
-  }
+import {
+  defaultSectionScores,
+  computeRiskMatrix,
+  dailyAccidentRate,
+} from '../../partitioning/lib/risk-scoring'
 
-  return { segments, totalLength: acc, refLat, refLon }
-}
-
-/** Position (in local meters) at arc length `s` along the path. */
-export function positionAt(path, s) {
-  if (s <= 0) return path.segments[0].p1
-  if (s >= path.totalLength) return path.segments[path.segments.length - 1].p2
-  for (const seg of path.segments) {
-    if (s <= seg.end) {
-      const t = (s - seg.start) / seg.length
-      return [
-        seg.p1[0] + t * (seg.p2[0] - seg.p1[0]),
-        seg.p1[1] + t * (seg.p2[1] - seg.p1[1]),
-      ]
-    }
-  }
-  return path.segments[path.segments.length - 1].p2
-}
+import {
+  computeSlotProbabilities,
+  computeSectionTimeSlotRates,
+  generateAccidentsForDay,
+} from '../../partitioning/lib/accident-generator'
 
 // ---------------------------------------------------------------------------
 // Seedable RNG (mulberry32)
@@ -175,17 +140,107 @@ export const DEFAULT_PARAMS = {
   reserveCount: 2,               // [DESIGN]
   reserveDispatchDelay: 30,      // [DESIGN] s — reserve travel time to segment
 
-  // Accident generation
-  // [LIT] Accidents per road are modelled as a homogeneous Poisson process,
-  //         the standard treatment for road-incident arrivals in safety
-  //         analysis (Hauer 1997, "Observational Before-After Studies in
-  //         Road Safety", chapter on accident frequency models).
-  //         Per-road base rate λ = (annual accidents / 31 536 000 s).
-  //         Multiplied by `accidentRateMultiplier` to allow stress testing.
+  // Accident generation — section-time-slot Poisson model (§4-§5 of the
+  // simplified-model report). For each road:
+  //   d_total/day        = (accidents × accidentRateMultiplier) / 365
+  //   λ_{i,b}/day        = (d_total/B) · P(i|b)
+  //   N_{i,b}(d)         ~ Poisson(λ_{i,b}/day)
+  //   τ_k ~ U(t_b_start, t_b_end);  s_k ~ U(s_i_start, s_i_end)
+  //
+  // accidentRateMultiplier acts on d_total (uniform across slots).
+  // simStartHour sets where the trial window starts in the day, which
+  // determines which time slot(s) the trial samples from.
   accidentRateMultiplier: 30,    // [TUNING] above real-world rates so a 1-hour
                                  // trial produces statistically meaningful
                                  // counts; thesis figures should disclose this
                                  // factor when reporting "trials per fleet size".
+  simStartHour: 8,               // [DESIGN] hour of day (0-24) at which a trial
+                                 // begins. 8 = morning rush (slot 2). The 5
+                                 // time slots are 00-06, 06-10, 10-16, 16-20,
+                                 // 20-24 (per the simplified-model report §3).
+}
+
+// ---------------------------------------------------------------------------
+// Schedule builder for the section-time-slot Poisson model
+// ---------------------------------------------------------------------------
+
+/**
+ * Build (or rebuild) the per-road risk + rate model used to generate
+ * accidents. Each entry contains:
+ *   { road, scores, riskMatrix, slotProbs, rateMatrix }
+ * The road is keyed by id; results are cached for the lifetime of the
+ * module since the input (road object) is immutable in practice.
+ */
+const _roadModelCache = new Map()
+function getRoadRiskModel(road) {
+  const cached = _roadModelCache.get(road.id)
+  if (cached && cached._sig === road.accidents) return cached
+  const scores = defaultSectionScores(road)
+  const riskMatrix = computeRiskMatrix(scores)
+  const slotProbs = computeSlotProbabilities(riskMatrix)
+  const rateMatrix = computeSectionTimeSlotRates(dailyAccidentRate(road.accidents), slotProbs)
+  const model = { scores, riskMatrix, slotProbs, rateMatrix, _sig: road.accidents }
+  _roadModelCache.set(road.id, model)
+  return model
+}
+
+/**
+ * Generate the accident schedule for one trial using the section-time-slot
+ * Poisson model.
+ *
+ * For each road in `roadStates`:
+ *   1. Look up its cached risk + rate model.
+ *   2. Scale every λ_{i,b} by params.accidentRateMultiplier (stress factor).
+ *   3. Sample Poisson events for each day that intersects the trial window
+ *      [simStartHour, simStartHour + totalTime/3600).
+ *   4. Convert each event:
+ *        time          = (globalHour − simStartHour) × 3600   (seconds)
+ *        s (meters)    = e.s × 1000                          (km → m)
+ *      plus extra fields {sectionIndex, timeSlot, tau} for downstream UIs
+ *      that want to inspect the section/slot a given event came from.
+ *
+ * Returns events sorted by time, in the same shape the rest of the engine
+ * already consumes.
+ */
+function generateAccidentSchedule(roadStates, params, rng) {
+  const totalHours = params.totalTime / 3600
+  const startHour = params.simStartHour ?? 0
+  const endHour = startHour + totalHours
+  const startDay = Math.floor(startHour / 24)
+  const endDay = Math.floor(endHour / 24)
+  const mult = params.accidentRateMultiplier ?? 1
+  const events = []
+  for (let r = 0; r < roadStates.length; r++) {
+    const rs = roadStates[r]
+    const model = getRoadRiskModel(rs.road)
+    // Apply the stress multiplier per (section, slot).
+    const scaledRate = model.rateMatrix.map((row) => ({
+      sectionIndex: row.sectionIndex,
+      sStart: row.sStart,
+      sEnd: row.sEnd,
+      lambda: row.lambda.map((l) => l * mult),
+    }))
+    for (let d = startDay; d <= endDay; d++) {
+      const dayEvents = generateAccidentsForDay(scaledRate, d, rng)
+      for (const e of dayEvents) {
+        const globalHour = d * 24 + e.tau
+        if (globalHour < startHour || globalHour >= endHour) continue
+        events.push({
+          time: (globalHour - startHour) * 3600,
+          roadIdx: r,
+          s: e.s * 1000,
+          sectionIndex: e.sectionIndex,
+          timeSlot: e.timeSlot,
+          tau: e.tau,
+          detected: false,
+          detectionTime: null,
+          missed: false,
+        })
+      }
+    }
+  }
+  events.sort((a, b) => a.time - b.time)
+  return events
 }
 
 /** Compute a per-road Poisson rate (accidents/second) from its real data. */
@@ -211,10 +266,11 @@ export function simulateOnce({ allocation, params, seed }) {
   const P = { ...DEFAULT_PARAMS, ...params }
   const rng = makeRng(seed)
 
-  // Per-road state
+  // Per-road state — arrival rate is now derived from the section-time-slot
+  // model inside generateAccidentSchedule(), so no per-road baseRate field is
+  // needed on the road state object.
   const roadStates = allocation.map(({ road, drones: nDrones }) => {
     const path = buildRoadPath(road)
-    const baseRate = baselineRoadRate(road) * P.accidentRateMultiplier
     const droneStates = []
     if (nDrones > 0) {
       const segLen = path.totalLength / nDrones
@@ -235,7 +291,6 @@ export function simulateOnce({ allocation, params, seed }) {
     return {
       road,
       path,
-      baseRate,
       droneStates,
       nAssigned: nDrones,
     }
@@ -248,28 +303,8 @@ export function simulateOnce({ allocation, params, seed }) {
     reserves.push({ state: 'idle', readyAt: 0, target: null })
   }
 
-  // Pre-generate accident schedule per road (Poisson process).
-  const accidents = []
-  for (let r = 0; r < roadStates.length; r++) {
-    const rs = roadStates[r]
-    if (rs.baseRate <= 0) continue
-    let t = 0
-    while (true) {
-      const u = Math.max(rng(), 1e-12)
-      const dt = -Math.log(u) / rs.baseRate
-      t += dt
-      if (t >= P.totalTime) break
-      accidents.push({
-        time: t,
-        roadIdx: r,
-        s: rng() * rs.path.totalLength,
-        detected: false,
-        detectionTime: null,
-        missed: false,
-      })
-    }
-  }
-  accidents.sort((a, b) => a.time - b.time)
+  // Pre-generate accident schedule via the section-time-slot model.
+  const accidents = generateAccidentSchedule(roadStates, P, rng)
 
   // Step the simulation
   const availabilityHistory = []
@@ -474,7 +509,6 @@ export function simulateWithDispatch({ allocation, params, seed, dispatchRule = 
 
   const roadStates = allocation.map(({ road, drones: nDrones }) => {
     const path = buildRoadPath(road)
-    const baseRate = baselineRoadRate(road) * P.accidentRateMultiplier
     const droneStates = []
     if (nDrones > 0) {
       const segLen = path.totalLength / nDrones
@@ -494,24 +528,12 @@ export function simulateWithDispatch({ allocation, params, seed, dispatchRule = 
         })
       }
     }
-    return { road, path, baseRate, droneStates, nAssigned: nDrones }
+    return { road, path, droneStates, nAssigned: nDrones }
   })
 
-  // Pre-generate accidents
-  const accidents = []
-  for (let r = 0; r < roadStates.length; r++) {
-    const rs = roadStates[r]
-    if (rs.baseRate <= 0) continue
-    let t = 0
-    while (true) {
-      const u = Math.max(rng(), 1e-12)
-      t += -Math.log(u) / rs.baseRate
-      if (t >= P.totalTime) break
-      accidents.push({ time: t, roadIdx: r, s: rng() * rs.path.totalLength,
-        detected: false, detectionTime: null, missed: false, dispatchedAt: null })
-    }
-  }
-  accidents.sort((a, b) => a.time - b.time)
+  // Pre-generate accidents via the section-time-slot model.
+  const accidents = generateAccidentSchedule(roadStates, P, rng)
+  for (const a of accidents) a.dispatchedAt = null
 
   const availabilityHistory = []
   const active = []
@@ -607,7 +629,6 @@ export function simulateDetailedLog({ allocation, params, seed, sampleInterval =
 
   const roadStates = allocation.map(({ road, drones: nDrones }) => {
     const path = buildRoadPath(road)
-    const baseRate = baselineRoadRate(road) * P.accidentRateMultiplier
     const droneStates = []
     if (nDrones > 0) {
       const segLen = path.totalLength / nDrones
@@ -626,24 +647,15 @@ export function simulateDetailedLog({ allocation, params, seed, sampleInterval =
         })
       }
     }
-    return { road, path, baseRate, droneStates }
+    return { road, path, droneStates }
   })
 
-  const accidents = []
-  for (let r = 0; r < roadStates.length; r++) {
-    const rs = roadStates[r]
-    if (rs.baseRate <= 0) continue
-    let t = 0
-    while (true) {
-      const u = Math.max(rng(), 1e-12)
-      t += -Math.log(u) / rs.baseRate
-      if (t >= P.totalTime) break
-      accidents.push({ accidentId: accidents.length + 1, time: t, roadIdx: r,
-        corridor: rs.road.name, s: rng() * rs.path.totalLength,
-        detected: false, detectionTime: null, missed: false })
-    }
+  // Pre-generate accidents via the section-time-slot model.
+  const accidents = generateAccidentSchedule(roadStates, P, rng)
+  for (let i = 0; i < accidents.length; i++) {
+    accidents[i].accidentId = i + 1
+    accidents[i].corridor = roadStates[accidents[i].roadIdx].road.name
   }
-  accidents.sort((a, b) => a.time - b.time)
 
   const droneLog = []
   const active = []
