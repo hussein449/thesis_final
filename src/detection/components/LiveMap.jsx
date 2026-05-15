@@ -10,6 +10,7 @@ import {
 } from '../lib/detection-sim'
 import { POLICIES } from '../lib/policies'
 import { BEIRUT_CENTER, BEIRUT_ZOOM, computeRiskScore } from '../../partitioning/lib/roads'
+import { buildSections, DEFAULT_SECTION_LENGTH_KM } from '../../partitioning/lib/sections'
 
 // Deep green → deep amber → deep red gradient — readable against the
 // cream/taupe canvas without the washed-out pastel look of the original.
@@ -73,6 +74,79 @@ const REF_SEGMENT_LEN = 1500 // m
 function segmentDrainFactor(segLen) {
   const raw = segLen / REF_SEGMENT_LEN
   return Math.max(0.7, Math.min(1.6, raw))
+}
+
+// Unit perpendicular to the path tangent at arc-length s (in meters).
+// Uses a small finite difference; returns [nx, ny] perpendicular to motion.
+function perpendicularAt(path, sM) {
+  const eps = 5
+  const a = Math.max(0, Math.min(path.totalLength, sM - eps))
+  const b = Math.max(0, Math.min(path.totalLength, sM + eps))
+  const [x1, y1] = positionAt(path, a)
+  const [x2, y2] = positionAt(path, b)
+  const dx = x2 - x1
+  const dy = y2 - y1
+  const len = Math.hypot(dx, dy) || 1
+  return [-dy / len, dx / len]
+}
+
+// Draw the 1-km highway-section grid for one road as perpendicular ticks.
+// Returns the list of leaflet layers it created so the caller can clean up.
+function drawSectionGrid(map, rs, sectionLengthKm = DEFAULT_SECTION_LENGTH_KM) {
+  const layers = []
+  const sections = buildSections(rs.road.lengthKm, sectionLengthKm)
+  // Tick positions: every section boundary, i.e. s = 0, 1, 2, ..., L km.
+  const boundaries = [0, ...sections.map((s) => s.sEnd)]
+  for (const sKm of boundaries) {
+    const sM = Math.min(sKm * 1000, rs.path.totalLength)
+    const [xc, yc] = positionAt(rs.path, sM)
+    const [nx, ny] = perpendicularAt(rs.path, sM)
+    const isMajor = Math.abs(sKm - Math.round(sKm / 5) * 5) < 1e-6
+    const halfM = isMajor ? 140 : 70
+    const [latA, lonA] = unprojectMeters(xc + nx * halfM, yc + ny * halfM, rs.path.refLat, rs.path.refLon)
+    const [latB, lonB] = unprojectMeters(xc - nx * halfM, yc - ny * halfM, rs.path.refLat, rs.path.refLon)
+    const tick = L.polyline([[latA, lonA], [latB, lonB]], {
+      color: isMajor ? '#0E7490' : '#0891B2',
+      weight: isMajor ? 3 : 1.5,
+      opacity: isMajor ? 0.95 : 0.7,
+      interactive: true,
+    }).addTo(map)
+    const idxAt = sections.find((s) => s.sStart <= sKm && sKm < s.sEnd)
+    const labelKm = sKm.toFixed(0)
+    tick.bindTooltip(
+      `<div style="font-family:JetBrains Mono,monospace;font-size:10px;
+        color:#0E7490;background:#0c101a;border:1px solid #0E7490;
+        padding:3px 7px;border-radius:5px;white-space:nowrap">
+        s = ${labelKm} km
+        ${idxAt ? ` &middot; entering S<sub>${idxAt.index}</sub>` : ''}
+      </div>`,
+      { sticky: true }
+    )
+    layers.push(tick)
+
+    if (isMajor) {
+      const offsetM = halfM + 60
+      const [latL, lonL] = unprojectMeters(xc + nx * offsetM, yc + ny * offsetM, rs.path.refLat, rs.path.refLon)
+      const labelIcon = L.divIcon({
+        html: `<div style="
+          font: 600 10.5px 'JetBrains Mono', monospace;
+          color: #0E7490;
+          background: rgba(255,255,255,0.92);
+          padding: 1px 6px;
+          border-radius: 4px;
+          border: 1px solid #0E7490;
+          white-space: nowrap;
+          box-shadow: 0 1px 2px rgba(0,0,0,0.15);
+        ">${labelKm} km</div>`,
+        className: '',
+        iconSize: [44, 18],
+        iconAnchor: [22, 9],
+      })
+      const label = L.marker([latL, lonL], { icon: labelIcon, interactive: false }).addTo(map)
+      layers.push(label)
+    }
+  }
+  return layers
 }
 
 function makeRoadState(allocation, params, rng) {
@@ -210,11 +284,13 @@ export default function LiveMap({ N, policyKey, params: paramsProp }) {
   const [, force] = useState(0)
   const [running, setRunning] = useState(false)
   const [heatmap, setHeatmap] = useState(false)
+  const [showSections, setShowSections] = useState(true)
 
   // Map + Leaflet refs
   const mapElRef = useRef(null)
   const mapRef = useRef(null)
   const polylineLayerRef = useRef([])
+  const sectionLayerRef = useRef([])
   const droneLayerRef = useRef(new Map())     // id -> { marker, prevState }
   const accidentLayerRef = useRef(new Map())  // id -> { marker, prevStatus }
 
@@ -303,6 +379,25 @@ export default function LiveMap({ N, policyKey, params: paramsProp }) {
     force((x) => x + 1)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [N, policyKey, heatmap])
+
+  // Section grid (1-km highway sections, perpendicular ticks + 5-km labels).
+  // Listens to N/policyKey because those trigger init() which rebuilds
+  // roadStates; without that dep the grid would not redraw on top of the
+  // new polylines after a sweep configuration change.
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+    sectionLayerRef.current.forEach((layer) => layer.remove())
+    sectionLayerRef.current = []
+    if (!showSections) return
+    const st = stateRef.current
+    if (!st) return
+    for (const rs of st.roadStates) {
+      const layers = drawSectionGrid(map, rs)
+      sectionLayerRef.current.push(...layers)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showSections, N, policyKey, heatmap])
 
   // Render drone + accident markers reactively (called every frame)
   function syncMarkers() {
@@ -596,6 +691,17 @@ export default function LiveMap({ N, policyKey, params: paramsProp }) {
         </div>
         <div className="ml-auto flex items-center gap-1.5">
           <button
+            onClick={() => setShowSections((s) => !s)}
+            className={`px-3 py-1.5 text-[10.5px] font-semibold rounded-md cursor-pointer ring-1 transition-colors ${
+              showSections
+                ? 'bg-cyan-500/15 text-cyan-800 hover:bg-cyan-500/25 ring-cyan-500/40'
+                : 'bg-slate-700/50 text-slate-400 hover:text-slate-200 ring-slate-700/50'
+            }`}
+            title="Show 1-km highway-section boundaries (with 5-km labels)"
+          >
+            ┃ Sections {showSections ? 'ON' : 'OFF'}
+          </button>
+          <button
             onClick={() => setHeatmap((h) => !h)}
             className={`px-3 py-1.5 text-[10.5px] font-semibold rounded-md cursor-pointer ring-1 transition-colors ${
               heatmap
@@ -667,6 +773,14 @@ export default function LiveMap({ N, policyKey, params: paramsProp }) {
             <path d="M9 9 L17 17 M17 9 L9 17" stroke="#94a3b8" strokeWidth="2.2" strokeLinecap="round"/>
           </svg>
           Missed <span className="text-slate-500">— timeout {DEFAULT_PARAMS.maxDetectionWindow}s</span>
+        </span>
+        <span className="flex items-center gap-1.5 text-slate-300">
+          <svg width="22" height="16" viewBox="0 0 22 16">
+            <line x1="11" y1="2" x2="11" y2="14" stroke="#0E7490" strokeWidth="2.5"/>
+            <line x1="5"  y1="5" x2="5"  y2="11" stroke="#0891B2" strokeWidth="1.5" opacity="0.7"/>
+            <line x1="17" y1="5" x2="17" y2="11" stroke="#0891B2" strokeWidth="1.5" opacity="0.7"/>
+          </svg>
+          Sections <span className="text-slate-500">— 1-km ticks, labels every 5 km</span>
         </span>
         <span className="ml-auto text-[9px] text-slate-500 italic">
           Drone colour matches its assigned road
