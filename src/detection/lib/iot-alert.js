@@ -188,14 +188,12 @@ export function computeIotDetection({
 // ---------------------------------------------------------------------------
 
 /**
- * Default IoT communication range in meters. 5 km matches measured field
- * performance for the deployed radio (Ai-Thinker Ra-02 / Semtech SX1278
- * at 433 MHz) on a road-level sensor talking to a low-altitude UAV-
- * mounted receiver in a suburban-to-peri-urban corridor:
- *   - Ra-02 datasheet: rated 10 km LOS.
- *   - Ra-02 suburban field tests: 1.5–5 km ground-to-ground.
- *   - 5 km sits at the top of that envelope to reflect the elevation
- *     bonus the UAV receiver enjoys.
- * Override via params.sensingRange.
+ * Default IoT communication range in meters. 200 m is the simulation
+ * default — deliberately well below the deployed Ra-02 LoRa radio's
+ * physical maximum so that R_IoT acts as the binding constraint on
+ * detection. This makes the policy comparisons and sensitivity sweeps
+ * informative; at realistic LoRa ranges (km-scale) the alert zone
+ * dominates the corridor and detection collapses to nearest-UAV
+ * geometry. Override via params.sensingRange.
  */
-export const DEFAULT_R_IOT = 5000
+export const DEFAULT_R_IOT = 200

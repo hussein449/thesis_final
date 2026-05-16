@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   LineChart,
   Line,
@@ -59,8 +59,8 @@ const SWEEPS = [
     key: 'sensingRange',
     label: 'IoT range R_IoT',
     unit: 'm',
-    baseValues: [1000, 3000, 5000, 8000],
-    description: 'Ra-02 LoRa @ 433 MHz comms range. Wider → drone enters the alert zone sooner.',
+    baseValues: [100, 200, 300, 400],
+    description: 'IoT alert range. Wider → drone enters the alert zone sooner.',
   },
 ]
 
@@ -281,12 +281,17 @@ export default function SensitivityPlots({ fleetSizes, trialsPerPoint, params })
 
   const [chartData, setChartData] = useState({})
   const [done, setDone] = useState(0)
-  const cancelRef = useRef(false)
 
   const depKey = `${fixedN}|${trials}|${totalTime}|${JSON.stringify(baseParams)}`
 
   useEffect(() => {
-    cancelRef.current = false
+    // Per-run cancellation token. A shared ref would be reset by the
+    // next effect run BEFORE the in-flight sweep's next isCancelled()
+    // check, leaking ticks from the old run onto the new run's done
+    // counter (visible as progress > 100 %). Closing over a local
+    // var fixes this — the in-flight sweep keeps reading its OWN flag
+    // even after the effect re-fires with a new closure.
+    let cancelled = false
     setChartData({})
     setDone(0)
     runSweeps({
@@ -295,13 +300,18 @@ export default function SensitivityPlots({ fleetSizes, trialsPerPoint, params })
       totalTime,
       fixedN,
       baseParams,
-      onTick: () => setDone((d) => d + 1),
-      onChartReady: (k, rows) =>
-        setChartData((prev) => ({ ...prev, [k]: rows })),
-      isCancelled: () => cancelRef.current,
+      onTick: () => {
+        if (cancelled) return
+        setDone((d) => d + 1)
+      },
+      onChartReady: (k, rows) => {
+        if (cancelled) return
+        setChartData((prev) => ({ ...prev, [k]: rows }))
+      },
+      isCancelled: () => cancelled,
     })
     return () => {
-      cancelRef.current = true
+      cancelled = true
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [depKey])
