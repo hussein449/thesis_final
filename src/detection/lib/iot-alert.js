@@ -188,8 +188,12 @@ export function computeIotDetection({
 // ---------------------------------------------------------------------------
 
 /**
- * Default IoT communication range in meters. The report does not pin a
- * specific value; 200 m matches the optical sensing radius the existing
- * sim uses, which keeps comparable detection statistics until you tune it.
+ * Default IoT communication range in meters. 3 km matches measured LoRa
+ * field performance for a road-level 868 MHz sensor talking to a low-
+ * altitude UAV-mounted receiver in a suburban-to-peri-urban corridor
+ * (Yosensi suburban field test ~3.5 km ground-to-ground; NSF UAV-gateway
+ * measurement ~10 km airborne — 3 km sits between the two regimes,
+ * matching our setup where the sensor is on the ground but the receiver
+ * is elevated). Override via params.sensingRange.
  */
-export const DEFAULT_R_IOT = 200
+export const DEFAULT_R_IOT = 3000

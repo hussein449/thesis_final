@@ -149,9 +149,10 @@ export default function SweepConfig({
             label="IoT range R_IoT (m)"
             value={params.sensingRange}
             onChange={(v) => setParam('sensingRange', v)}
-            hint="UAV receives alert in [s_k − R, s_k + R]"
+            hint="LoRa @ 868 MHz · default 3000 m (suburban field-measured)"
             min={20}
-            max={1000}
+            max={15000}
+            step={100}
           />
           <NumberField
             label="Drone speed v (m/s)"

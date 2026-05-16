@@ -116,15 +116,27 @@ export const DEFAULT_PARAMS = {
   // [SPEC] DJI Mavic 3 Enterprise specs: 21 m/s max horizontal speed,
   //         ~46 min flight time. Source: DJI official datasheet
   //         https://enterprise.dji.com/mavic-3-enterprise/specs
-  //         12 m/s is a conservative cruise speed (~57% of max) consistent
-  //         with sustained patrol on a battery budget.
-  droneSpeed: 12,            // m/s
+  //         8 m/s is a conservative surveillance cruise (~38 % of max)
+  //         that extends sortie time and gives the onboard camera enough
+  //         dwell to discriminate roadside events.
+  droneSpeed: 8,             // m/s
 
-  // [LIT/DESIGN] IoT communication range R_IoT from the §9-§12 alert
-  //         model. The ground IoT sensor near the accident transmits;
-  //         the UAV receives when it enters [s_k - R_IoT, s_k + R_IoT].
-  //         200 m is the canonical default; tune per the deployed radio.
-  sensingRange: 200,         // m — R_IoT for the IoT alert model
+  // [LIT] IoT communication range R_IoT for the §9-§12 LoRa alert
+  //         model. The ground IoT sensor near the accident transmits at
+  //         868 MHz; the UAV receives when it enters [s_k - R_IoT, s_k + R_IoT].
+  //         3 km is the defensible default for a road-level sensor on a
+  //         suburban-to-peri-urban coastal corridor (M51 Khalde→Awali in
+  //         Lebanon) talking to a low-altitude UAV-mounted receiver:
+  //           • Yosensi ground-to-ground suburban field test: 3.5 km with a
+  //             small chip antenna at 868 MHz —
+  //             https://yosensi.io/posts/what_is_the_real_range_of_lora/
+  //           • NSF measurement study, UAV-mounted LoRa gateway in
+  //             sub-urban: max ≈10 km —
+  //             https://par.nsf.gov/servlets/purl/10117953
+  //         3 km sits between the ground-to-ground baseline and the
+  //         airborne-gateway upper bound, which is the regime our setup
+  //         (road-level sensor, low UAV receiver) falls into.
+  sensingRange: 3000,        // m — R_IoT for the LoRa IoT alert model
 
   // §6 — UAV patrol segmentation mode. 'uniform' divides the corridor
   // into M equal-length segments; 'risk-aware' groups 1-km sections so
