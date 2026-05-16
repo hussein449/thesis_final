@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   LineChart,
   Line,
@@ -13,48 +13,53 @@ import {
 import { simulateOnce, DEFAULT_PARAMS } from '../lib/detection-sim'
 import { POLICIES } from '../lib/policies'
 
-// Hard caps for the per-tab sweep so the page stays responsive even on
-// 30-day / 100-trial Configure setups. Smaller Configure values are
-// respected verbatim.
-const MAX_TOTAL_TIME = 2 * 86400   // 2 days
-const MAX_TRIALS = 5
 const FALLBACK_N = 10
 
+// This page deliberately runs each trial for ONE simulated WEEK, not
+// the Configure-page `totalTime`. Rationale:
+//   - Sensitivity is about *relative* slopes between sweep points, not
+//     absolute long-horizon predictions — a 7-day window is enough.
+//   - 7 days gives ~3.8 accidents per trial on the real-rate corridor
+//     (~200/yr), so with the Configure trials-per-point we get a
+//     well-populated sample without paying the 30-day cost.
+// Trials per point come from the Configure page. All other parameters
+// (droneSpeed, sensingRange, simStartHour, battery thresholds, etc.)
+// also come from Configure — only `totalTime` is overridden here.
+const TRIAL_TIME = 7 * 86400 // s — 1 simulated week per trial
+
 // ── Parameter sweep definitions ──────────────────────────────────────────────
-// `defaultVal` is intentionally OMITTED — it's resolved per render from
-// the user's Configure values, with DEFAULT_PARAMS as a fallback. That
-// keeps the amber "Configure" reference line and the header value in
-// sync with whatever the user set on the Configure page.
-//
-// 4 values per sweep keeps the total compute around 4 sweeps × 4 values
-// × 2 policies × 5 trials × 2-day = 5.5M iterations (~1 s synchronous).
+// Each sweep declares a small grid of "interesting" values. The user's
+// Configure value is inserted into the grid at render time so the amber
+// reference line lands on a real, computed data point — not just between
+// two samples. `defaultVal` is resolved per render from Configure params,
+// with DEFAULT_PARAMS as fallback.
 const SWEEPS = [
   {
     key: 'droneSpeed',
     label: 'Patrol speed',
     unit: 'm/s',
-    values: [6, 12, 18, 21],
+    baseValues: [6, 12, 18, 21],
     description: 'Faster drones cover their segment more frequently.',
   },
   {
     key: 'simStartHour',
     label: 'Trial start hour',
     unit: 'h',
-    values: [0, 8, 14, 20],
+    baseValues: [0, 8, 14, 20],
     description: 'Hour-of-day baseline. Different time slots reweight T / C / M.',
   },
   {
     key: 'lowBatteryThreshold',
     label: 'Dock threshold',
     unit: '%',
-    values: [10, 20, 30, 40],
+    baseValues: [10, 20, 30, 40],
     description: 'Battery % at which a drone returns to dock. Higher → docks sooner.',
   },
   {
     key: 'sensingRange',
     label: 'IoT range R_IoT',
     unit: 'm',
-    values: [100, 200, 300, 400],
+    baseValues: [100, 200, 300, 400],
     description: 'IoT comms range. Wider → drone enters the signal zone sooner.',
   },
 ]
@@ -62,37 +67,74 @@ const SWEEPS = [
 const grid = '#1e293b'
 const textColor = '#64748b'
 
-// Run sensitivity sweep synchronously. The Configure-page `params` are
-// used as the baseline for every "held-fixed" parameter; only the swept
-// variable overrides them. Trial count and trial length are clamped so
-// the synchronous sweep can't choke the browser on a 100-trial × 30-day
-// Configure setup.
-function computeSweep(sweep, { trialsPerPoint, totalTime, fixedN, baseParams }) {
-  const results = []
-  for (const v of sweep.values) {
-    // Baseline = DEFAULT_PARAMS + user's Configure params, then override
-    // the swept variable and clamp totalTime for this view.
-    const params = {
-      ...DEFAULT_PARAMS,
-      ...baseParams,
-      [sweep.key]: v,
-      totalTime,
-    }
-    const row = { v }
-    for (const pKey of ['uniform', 'riskAware']) {
-      const allocation = POLICIES[pKey].allocate(fixedN)
-      const trialParams = { ...params, patrolMode: POLICIES[pKey].patrolMode ?? 'uniform' }
-      let totalDt = 0
-      let count = 0
-      for (let t = 0; t < trialsPerPoint; t++) {
-        const r = simulateOnce({ allocation, params: trialParams, seed: 42 + t * 31 })
-        r.detectionTimes.forEach((dt) => { totalDt += dt; count++ })
+const nextTick = () => new Promise((r) => setTimeout(r, 0))
+
+// Insert the Configure value into the sweep grid if it isn't already
+// there, keeping the grid sorted. Guarantees the amber reference line
+// has a real data point on every chart.
+function withConfigureValue(baseValues, configValue) {
+  if (!Number.isFinite(configValue)) return baseValues
+  if (baseValues.some((v) => Math.abs(v - configValue) < 1e-9)) return baseValues
+  return [...baseValues, configValue].sort((a, b) => a - b)
+}
+
+// Async sweep runner. Honors Configure params verbatim (no clamping)
+// and yields to the event loop between trials so the browser stays
+// responsive on a 30-day × 20-trial config. Reports progress per trial
+// and emits each chart's data as soon as it's ready, so charts paint
+// progressively instead of all-at-once at the end.
+async function runSweeps({
+  sweepsWithDefaults,
+  trialsPerPoint,
+  totalTime,
+  fixedN,
+  baseParams,
+  onTick,
+  onChartReady,
+  isCancelled,
+}) {
+  for (const sweep of sweepsWithDefaults) {
+    const rows = []
+    for (const v of sweep.values) {
+      if (isCancelled()) return
+      const params = {
+        ...DEFAULT_PARAMS,
+        ...baseParams,
+        [sweep.key]: v,
+        totalTime,
       }
-      row[pKey] = count > 0 ? Math.round(totalDt / count) : null
+      const row = { v }
+      for (const pKey of ['uniform', 'riskAware']) {
+        const allocation = POLICIES[pKey].allocate(fixedN)
+        const trialParams = {
+          ...params,
+          patrolMode: POLICIES[pKey].patrolMode ?? 'uniform',
+        }
+        let totalDt = 0
+        let count = 0
+        for (let t = 0; t < trialsPerPoint; t++) {
+          if (isCancelled()) return
+          const r = simulateOnce({
+            allocation,
+            params: trialParams,
+            seed: 42 + t * 31,
+          })
+          r.detectionTimes.forEach((dt) => {
+            totalDt += dt
+            count++
+          })
+          onTick()
+          // Yield every 2 trials. Tight enough that a 30-day trial
+          // never blocks the UI for more than a few hundred ms, but
+          // loose enough that the setTimeout overhead is negligible.
+          if (t % 2 === 1) await nextTick()
+        }
+        row[pKey] = count > 0 ? Math.round(totalDt / count) : null
+      }
+      rows.push(row)
     }
-    results.push(row)
+    if (!isCancelled()) onChartReady(sweep.key, rows)
   }
-  return results
 }
 
 function SweepChart({ sweep, data, fixedN, trials, defaultVal }) {
@@ -115,6 +157,8 @@ function SweepChart({ sweep, data, fixedN, trials, defaultVal }) {
           <CartesianGrid stroke={grid} strokeDasharray="3 3" />
           <XAxis
             dataKey="v"
+            type="number"
+            domain={['dataMin', 'dataMax']}
             stroke={textColor}
             tick={{ fontSize: 10 }}
             tickFormatter={(v) => `${v}${sweep.unit}`}
@@ -194,36 +238,76 @@ function SweepChart({ sweep, data, fixedN, trials, defaultVal }) {
   )
 }
 
+function ChartPlaceholder({ sweep }) {
+  return (
+    <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-card)] p-4 h-[260px] flex flex-col">
+      <div className="text-[10px] text-[var(--color-txt2)] uppercase tracking-widest font-semibold">
+        {sweep.label}
+      </div>
+      <div className="flex-1 flex items-center justify-center">
+        <div className="inline-flex items-center gap-2 text-[10.5px] text-[var(--color-txt3)]">
+          <span className="inline-block w-2 h-2 rounded-full bg-blue-500/40 animate-pulse" />
+          Computing {sweep.label.toLowerCase()}…
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function SensitivityPlots({ fleetSizes, trialsPerPoint, params }) {
-  // Use the median of the user's fleet sizes as the held-fixed N, falling
-  // back to 10 if none provided.
+  // Hold N fixed at the median of the user's fleet sizes (falling back
+  // to 10 if Configure hasn't been touched yet).
   const fixedN = (fleetSizes && fleetSizes.length > 0)
     ? fleetSizes[Math.floor(fleetSizes.length / 2)]
     : FALLBACK_N
-  const safeTrials = Math.min(Math.max(1, trialsPerPoint ?? MAX_TRIALS), MAX_TRIALS)
-  const safeTotalTime = Math.min(params?.totalTime ?? MAX_TOTAL_TIME, MAX_TOTAL_TIME)
+  const trials = Math.max(1, trialsPerPoint ?? 5)
   const baseParams = params ?? {}
+  // totalTime is fixed at 1 day on this page (see TRIAL_TIME above).
+  // Every other parameter still flows from Configure.
+  const totalTime = TRIAL_TIME
 
-  // Per-sweep defaultVal comes from the user's Configure params first,
-  // then falls back to DEFAULT_PARAMS. This is what drives the amber
-  // "Configure" reference line on each chart and the "(def. X)" label.
-  const sweepsWithDefaults = SWEEPS.map((s) => ({
-    ...s,
-    defaultVal: baseParams[s.key] ?? DEFAULT_PARAMS[s.key],
-  }))
+  // Per-sweep defaultVal comes from Configure first, DEFAULT_PARAMS
+  // second. The `values` grid then inserts that defaultVal so the
+  // reference line hits a real data point.
+  const sweepsWithDefaults = SWEEPS.map((s) => {
+    const defaultVal = baseParams[s.key] ?? DEFAULT_PARAMS[s.key]
+    return { ...s, defaultVal, values: withConfigureValue(s.baseValues, defaultVal) }
+  })
 
-  const depKey = `${fixedN}|${safeTrials}|${safeTotalTime}|${JSON.stringify(baseParams)}`
+  const totalTrials = sweepsWithDefaults.reduce(
+    (n, s) => n + s.values.length * 2 * trials,
+    0,
+  )
 
-  const sweepData = useMemo(() => {
-    const opts = {
-      trialsPerPoint: safeTrials,
-      totalTime: safeTotalTime,
+  const [chartData, setChartData] = useState({})
+  const [done, setDone] = useState(0)
+  const cancelRef = useRef(false)
+
+  const depKey = `${fixedN}|${trials}|${totalTime}|${JSON.stringify(baseParams)}`
+
+  useEffect(() => {
+    cancelRef.current = false
+    setChartData({})
+    setDone(0)
+    runSweeps({
+      sweepsWithDefaults,
+      trialsPerPoint: trials,
+      totalTime,
       fixedN,
       baseParams,
+      onTick: () => setDone((d) => d + 1),
+      onChartReady: (k, rows) =>
+        setChartData((prev) => ({ ...prev, [k]: rows })),
+      isCancelled: () => cancelRef.current,
+    })
+    return () => {
+      cancelRef.current = true
     }
-    return sweepsWithDefaults.map((sweep) => ({ sweep, data: computeSweep(sweep, opts) }))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [depKey])
+
+  const pct = totalTrials > 0 ? Math.min(100, Math.round((done / totalTrials) * 100)) : 0
+  const allDone = Object.keys(chartData).length === sweepsWithDefaults.length
 
   return (
     <div className="space-y-4">
@@ -232,12 +316,20 @@ export default function SensitivityPlots({ fleetSizes, trialsPerPoint, params })
         <div className="text-[10px] text-[var(--color-txt2)] uppercase tracking-widest font-semibold mb-1">
           Sensitivity Analysis — one parameter at a time
         </div>
+        <div className="mb-2 inline-flex items-center gap-2 px-2 py-0.5 rounded-md bg-amber-700/10 ring-1 ring-amber-700/30 text-[10px] font-semibold text-amber-700 uppercase tracking-wider">
+          Fixed window: 1 simulated week per trial
+        </div>
         <div className="text-[11px] text-[var(--color-txt3)] leading-relaxed max-w-3xl">
-          Each chart varies one parameter while holding the others at the Configure values
-          (N&nbsp;=&nbsp;{fixedN}, {safeTrials} trials per point,&nbsp;
-          {(safeTotalTime / 86400).toFixed(1)}-day window).
-          The amber dashed line marks each parameter's reference value.
-          Both allocation policies are shown to reveal where Risk-aware outperforms Uniform.
+          <span className="text-[var(--color-txt2)] font-semibold">What this page does:</span>{' '}
+          for each of the four parameters below, it varies that parameter alone — every other
+          parameter is held at your Configure value — and plots mean detection time under
+          both allocation policies. Steeper slope = more sensitive; the gap between the two
+          curves shows where Risk-aware beats Uniform.
+          <br />
+          Run setup: N&nbsp;=&nbsp;{fixedN}, <span className="text-[var(--color-txt2)] font-semibold">{trials} trials per point</span> (from Configure),
+          1-week window per trial (fixed on this page so the sweep stays fast).
+          The amber dashed line on each chart marks the Configure value (also plotted as a
+          data point so you can read off its predicted detection time).
         </div>
         <div className="mt-3 flex flex-wrap gap-4 text-[10px] text-[var(--color-txt3)]">
           {sweepsWithDefaults.map((s) => (
@@ -248,19 +340,37 @@ export default function SensitivityPlots({ fleetSizes, trialsPerPoint, params })
             </div>
           ))}
         </div>
+
+        {!allDone && (
+          <div className="mt-3 flex items-center gap-3">
+            <div className="flex-1 h-1.5 rounded-full bg-slate-700/50 overflow-hidden ring-1 ring-slate-800">
+              <div
+                className="h-full bg-blue-700 transition-all"
+                style={{ width: `${pct}%` }}
+              />
+            </div>
+            <span className="text-[10px] text-[var(--color-txt3)] font-mono tabular-nums w-28 text-right">
+              {done} / {totalTrials} trials · {pct}%
+            </span>
+          </div>
+        )}
       </div>
 
-      {/* 2×2 grid of charts */}
+      {/* 2×2 grid of charts (each paints as it completes) */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {sweepData.map(({ sweep, data }) => (
-          <SweepChart
-            key={sweep.key}
-            sweep={sweep}
-            data={data}
-            fixedN={fixedN}
-            trials={safeTrials}
-            defaultVal={sweep.defaultVal}
-          />
+        {sweepsWithDefaults.map((sweep) => (
+          chartData[sweep.key] ? (
+            <SweepChart
+              key={sweep.key}
+              sweep={sweep}
+              data={chartData[sweep.key]}
+              fixedN={fixedN}
+              trials={trials}
+              defaultVal={sweep.defaultVal}
+            />
+          ) : (
+            <ChartPlaceholder key={sweep.key} sweep={sweep} />
+          )
         ))}
       </div>
 
