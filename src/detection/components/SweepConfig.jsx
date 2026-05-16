@@ -149,7 +149,7 @@ export default function SweepConfig({
             label="IoT range R_IoT (m)"
             value={params.sensingRange}
             onChange={(v) => setParam('sensingRange', v)}
-            hint="LoRa @ 868 MHz · default 3000 m (suburban field-measured)"
+            hint="Ra-02 LoRa @ 433 MHz · default 5000 m (suburban field-measured)"
             min={20}
             max={15000}
             step={100}

@@ -59,8 +59,8 @@ const SWEEPS = [
     key: 'sensingRange',
     label: 'IoT range R_IoT',
     unit: 'm',
-    baseValues: [500, 1500, 3000, 5000],
-    description: 'LoRa @ 868 MHz comms range. Wider → drone enters the alert zone sooner.',
+    baseValues: [1000, 3000, 5000, 8000],
+    description: 'Ra-02 LoRa @ 433 MHz comms range. Wider → drone enters the alert zone sooner.',
   },
 ]
 

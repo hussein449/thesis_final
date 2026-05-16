@@ -188,12 +188,14 @@ export function computeIotDetection({
 // ---------------------------------------------------------------------------
 
 /**
- * Default IoT communication range in meters. 3 km matches measured LoRa
- * field performance for a road-level 868 MHz sensor talking to a low-
- * altitude UAV-mounted receiver in a suburban-to-peri-urban corridor
- * (Yosensi suburban field test ~3.5 km ground-to-ground; NSF UAV-gateway
- * measurement ~10 km airborne — 3 km sits between the two regimes,
- * matching our setup where the sensor is on the ground but the receiver
- * is elevated). Override via params.sensingRange.
+ * Default IoT communication range in meters. 5 km matches measured field
+ * performance for the deployed radio (Ai-Thinker Ra-02 / Semtech SX1278
+ * at 433 MHz) on a road-level sensor talking to a low-altitude UAV-
+ * mounted receiver in a suburban-to-peri-urban corridor:
+ *   - Ra-02 datasheet: rated 10 km LOS.
+ *   - Ra-02 suburban field tests: 1.5–5 km ground-to-ground.
+ *   - 5 km sits at the top of that envelope to reflect the elevation
+ *     bonus the UAV receiver enjoys.
+ * Override via params.sensingRange.
  */
-export const DEFAULT_R_IOT = 3000
+export const DEFAULT_R_IOT = 5000

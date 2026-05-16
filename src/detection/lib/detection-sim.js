@@ -121,22 +121,26 @@ export const DEFAULT_PARAMS = {
   //         dwell to discriminate roadside events.
   droneSpeed: 8,             // m/s
 
-  // [LIT] IoT communication range R_IoT for the §9-§12 LoRa alert
-  //         model. The ground IoT sensor near the accident transmits at
-  //         868 MHz; the UAV receives when it enters [s_k - R_IoT, s_k + R_IoT].
-  //         3 km is the defensible default for a road-level sensor on a
-  //         suburban-to-peri-urban coastal corridor (M51 Khalde→Awali in
-  //         Lebanon) talking to a low-altitude UAV-mounted receiver:
-  //           • Yosensi ground-to-ground suburban field test: 3.5 km with a
-  //             small chip antenna at 868 MHz —
-  //             https://yosensi.io/posts/what_is_the_real_range_of_lora/
-  //           • NSF measurement study, UAV-mounted LoRa gateway in
-  //             sub-urban: max ≈10 km —
-  //             https://par.nsf.gov/servlets/purl/10117953
-  //         3 km sits between the ground-to-ground baseline and the
-  //         airborne-gateway upper bound, which is the regime our setup
-  //         (road-level sensor, low UAV receiver) falls into.
-  sensingRange: 3000,        // m — R_IoT for the LoRa IoT alert model
+  // [LIT/HW] IoT communication range R_IoT for the §9-§12 LoRa alert
+  //         model. Deployed radio: Ai-Thinker Ra-02 (Semtech SX1278) at
+  //         433 MHz. Road-level sensor transmits; the UAV receives when
+  //         it enters [s_k - R_IoT, s_k + R_IoT].
+  //         5 km is the defensible default for our setup (suburban-to-peri-
+  //         urban coastal corridor M51 Khalde→Awali, low-altitude UAV
+  //         receiver, omnidirectional antenna at both ends):
+  //           • Ra-02 datasheet: rated 10 km LOS —
+  //             https://docs.ai-thinker.com/en/Ra-02/index.html
+  //           • Ra-02 measured suburban field tests: 1.5–5 km —
+  //             https://medium.com/@ershrawan014/how-far-can-it-go-range-testing-of-the-ai-thinker-ra-02-lora-fsk-00k-module-2caae12420bd
+  //           • 433 MHz vs 868 MHz: ~6 dB lower path loss but 4 dB lower
+  //             EU power cap (+10 dBm vs +14 dBm), so net advantage is
+  //             modest; better obstacle penetration is the real win in
+  //             built environments —
+  //             https://www.sciencedirect.com/science/article/abs/pii/S0168169922000874
+  //         5 km sits at the top of the suburban measured envelope to
+  //         reflect the elevation bonus the UAV receiver gets over the
+  //         ground-to-ground numbers.
+  sensingRange: 5000,        // m — R_IoT for the Ra-02 LoRa link @ 433 MHz
 
   // §6 — UAV patrol segmentation mode. 'uniform' divides the corridor
   // into M equal-length segments; 'risk-aware' groups 1-km sections so
