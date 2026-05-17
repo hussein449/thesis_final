@@ -8,9 +8,6 @@ import {
   Legend,
   ResponsiveContainer,
   ReferenceLine,
-  BarChart,
-  Bar,
-  Cell,
 } from 'recharts'
 import { POLICIES } from '../lib/policies'
 
@@ -54,10 +51,7 @@ function CustomTooltip({ active, payload, label, unit, decimals = 1 }) {
 
 /**
  * Combine the per-policy result arrays into a single dataset keyed by N.
- *   [{ N, uniform_avg, riskAware_avg, uniform_p, riskAware_p, ΔT, ... }]
- *
- * ΔT(M) = T̄_alert (uniform) − T̄_alert (risk-aware)  (per §14 of the
- * simplified-model report). Positive means risk-aware is faster.
+ *   [{ N, uniform_avg, riskAware_avg, uniform_p, riskAware_p, ... }]
  */
 function joinByN(results) {
   const byN = new Map()
@@ -72,17 +66,7 @@ function joinByN(results) {
       row[`${policy}_rate`] = p.detectionRate * 100
     }
   }
-  const rows = [...byN.values()].sort((a, b) => a.N - b.N)
-  // ΔT(M) per fleet size — only meaningful when both policies have a
-  // detection-time value for this N.
-  for (const row of rows) {
-    if (row.uniform_avg != null && row.riskAware_avg != null) {
-      row.deltaT = row.uniform_avg - row.riskAware_avg
-    } else {
-      row.deltaT = null
-    }
-  }
-  return rows
+  return [...byN.values()].sort((a, b) => a.N - b.N)
 }
 
 export default function PolicyResultsPlots({ results }) {
@@ -96,15 +80,13 @@ export default function PolicyResultsPlots({ results }) {
   }
 
   const policies = Object.keys(results)
-  const hasBothPolicies = policies.includes('uniform') && policies.includes('riskAware')
-  const deltaData = hasBothPolicies ? data.filter((d) => d.deltaT != null) : []
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
       {/* ── Average detection time ─────────────────────── */}
       <ChartCard
-        title="Mean detection time T̄_alert vs fleet size M"
-        subtitle="Lower is better. T̄ = (1/K) Σ T_alert,k from the closed-form IoT 5-case formula (§11), min over candidates {m−1, m, m+1}."
+        title="Mean detection time vs fleet size"
+        subtitle="Lower is better. Average time from accident to first UAV alert, across all detected accidents."
       >
         <ResponsiveContainer width="100%" height={260}>
           <LineChart data={data} margin={{ top: 10, right: 20, left: 0, bottom: 4 }}>
@@ -154,8 +136,8 @@ export default function PolicyResultsPlots({ results }) {
 
       {/* ── P(detection < 2 min) ───────────────────────── */}
       <ChartCard
-        title="P(T_alert &lt; 2 min) vs fleet size M"
-        subtitle="Higher is better. Fraction of all accidents whose IoT alert reaches a candidate UAV within 120 s."
+        title="Detection within 2 minutes vs fleet size"
+        subtitle="Higher is better. Percentage of accidents detected within 2 minutes."
       >
         <ResponsiveContainer width="100%" height={260}>
           <LineChart data={data} margin={{ top: 10, right: 20, left: 0, bottom: 4 }}>
@@ -203,59 +185,6 @@ export default function PolicyResultsPlots({ results }) {
         </ResponsiveContainer>
       </ChartCard>
 
-      {/* ── ΔT(M) improvement (risk-aware over uniform) ───── */}
-      {hasBothPolicies && deltaData.length > 0 && (
-        <div className="lg:col-span-2">
-          <ChartCard
-            title="ΔT(M) = T̄_uniform − T̄_risk-aware  (improvement of risk-aware patrol)"
-            subtitle="Positive bars: risk-aware is faster than uniform at that fleet size. Negative: uniform wins. Both policies are evaluated on the SAME accident events per (trial, N), so the difference is attributable to patrol segmentation alone (§14)."
-          >
-            <ResponsiveContainer width="100%" height={240}>
-              <BarChart data={deltaData} margin={{ top: 10, right: 20, left: 0, bottom: 4 }}>
-                <CartesianGrid stroke={grid} strokeDasharray="3 3" />
-                <XAxis
-                  dataKey="N"
-                  stroke={text}
-                  tick={{ fontSize: 10 }}
-                  label={{
-                    value: 'Number of UAVs M',
-                    position: 'insideBottom',
-                    offset: -2,
-                    fill: text,
-                    fontSize: 10,
-                  }}
-                />
-                <YAxis
-                  stroke={text}
-                  tick={{ fontSize: 10 }}
-                  label={{
-                    value: 'ΔT (s)',
-                    angle: -90,
-                    position: 'insideLeft',
-                    fill: text,
-                    fontSize: 10,
-                  }}
-                />
-                <Tooltip content={<CustomTooltip unit="s" />} />
-                <Legend wrapperStyle={{ fontSize: 10, color: text }} />
-                <ReferenceLine y={0} stroke={text} />
-                <Bar dataKey="deltaT" name="ΔT(M)">
-                  {deltaData.map((row, i) => (
-                    <Cell
-                      key={`bar-${i}`}
-                      fill={
-                        row.deltaT == null ? '#64748b'
-                        : row.deltaT > 0 ? POLICIES.riskAware.color
-                        : POLICIES.uniform.color
-                      }
-                    />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </ChartCard>
-        </div>
-      )}
     </div>
   )
 }
