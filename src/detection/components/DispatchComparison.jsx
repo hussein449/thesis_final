@@ -137,10 +137,24 @@ export default function DispatchComparison({ fleetSizes, trialsPerPoint, params 
           Dispatch strategy comparison — active-response model
         </div>
         <div className="text-[11px] text-[var(--color-txt3)] leading-relaxed max-w-3xl">
-          When an accident occurs, a drone on the same road is actively selected and diverted.
-          Detection time equals travel time at patrol speed ({droneSpeed} m/s).
-          Allocation: Risk-aware (Hamilton method). Sweep uses the Configure-page fleet sizes
-          ({safeFleetSizes.join(', ')}), {safeTrials} trials per fleet size, {durLabel} per trial.
+          <span className="text-[var(--color-txt2)] font-semibold">What this tab answers:</span>{' '}
+          if we actively divert a single drone to every accident, which selection rule
+          (Nearest / Battery-aware / Balanced) wins? Detection time = travel distance ÷
+          patrol speed ({droneSpeed} m/s). Allocation is fixed to Risk-aware (Hamilton);
+          only the dispatch rule varies.
+          <br />
+          Sweep: fleet sizes from Configure ({safeFleetSizes.join(', ')}),
+          {' '}{safeTrials} trials per fleet size, {durLabel} per trial.
+        </div>
+        <div className="mt-2 rounded-md border border-amber-700/30 bg-amber-700/10 px-3 py-2 text-[10.5px] text-amber-700/95 leading-relaxed max-w-3xl">
+          <span className="font-semibold">Note — bare-bones model:</span> this tab uses a
+          stripped-down simulation with <span className="font-semibold">no reserve drones</span>{' '}
+          and <span className="font-semibold">no stacking</span>, so the three dispatch rules
+          compete on equal footing. An accident is marked missed only when{' '}
+          <span className="font-semibold">zero drones are patrolling at the exact instant</span>{' '}
+          it occurs — a strict criterion that produces a non-zero miss rate even on a healthy
+          fleet. For realistic miss-rate numbers (with reserves + stacking) see the
+          Detection performance and Operational metrics tabs.
         </div>
         {/* Strategy cards */}
         <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3">
