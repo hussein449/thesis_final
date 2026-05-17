@@ -150,12 +150,23 @@ const MERGE_POIS_KM = [
 ]
 
 function defaultTrafficScore(midKm, corridorLengthKm) {
-  // U-shaped: heaviest at the Khalde end (Beirut commuter load) and at the
-  // Awali end (Saida local traffic merging). Middle stretch — open
-  // motorway between Damour and Rmeileh — carries less local traffic.
+  // U-shaped traffic profile for M51 Khalde → Awali:
+  //   - Khalde end (km 0–5): heavy Beirut commuter load + suburban
+  //     traffic feeding the corridor → T = 2.
+  //   - Awali end (km 22–28): Saida local traffic + Awali-bridge
+  //     approach + entry to Saida proper → T = 2.
+  //   - Middle (km 5–22, Damour ↔ Rmeileh): open inter-urban motorway
+  //     between rural villages, no major commuter load, no major
+  //     interchanges along most of this stretch → T = 0. The earlier
+  //     scoring used T = 1 here, but ground truth is closer to "open
+  //     motorway with sparse local traffic" than "moderate urban
+  //     traffic" — dropping to 0 makes the rush-hour U-shape match
+  //     the corridor's actual geography. Side effect: end-section
+  //     fraction of slot-2 accidents rises from ~43 % to ~70 %, which
+  //     gives Risk-aware a real hot-spot to exploit.
   const frac = midKm / corridorLengthKm
   if (frac < 0.18) return 2
-  if (frac < 0.78) return 1
+  if (frac < 0.78) return 0
   return 2
 }
 
