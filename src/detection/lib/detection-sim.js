@@ -194,6 +194,18 @@ export const DEFAULT_PARAMS = {
                                  // begins. 8 = morning rush (slot 2). The 5
                                  // time slots are 00-06, 06-10, 10-16, 16-20,
                                  // 20-24 (per the simplified-model report §3).
+                                 // Ignored when forceTimeSlot is set.
+
+  // Time-of-day regime selector.
+  //   null  → "Auto" — accident rates follow the natural per-slot
+  //           weighting across the trial window (existing behaviour).
+  //   1..5  → Force every accident in the trial to be drawn from the
+  //           chosen slot's risk distribution P(i|b), with the daily
+  //           total scaled by B=5 so the total events/day still matches
+  //           the corridor's real rate. Use this to study a single
+  //           time-of-day regime (e.g. "30 days where every hour is
+  //           morning rush") without averaging slot effects together.
+  forceTimeSlot: null,
 }
 
 // ---------------------------------------------------------------------------
@@ -247,12 +259,13 @@ function generateAccidentSchedule(roadStates, params, rng) {
   const endHour = startHour + totalHours
   const startDay = Math.floor(startHour / 24)
   const endDay = Math.floor(endHour / 24)
+  const forceTimeSlot = params.forceTimeSlot ?? null
   const events = []
   for (let r = 0; r < roadStates.length; r++) {
     const rs = roadStates[r]
     const model = getRoadRiskModel(rs.road)
     for (let d = startDay; d <= endDay; d++) {
-      const dayEvents = generateAccidentsForDay(model.rateMatrix, d, rng)
+      const dayEvents = generateAccidentsForDay(model.rateMatrix, d, rng, forceTimeSlot)
       for (const e of dayEvents) {
         const globalHour = d * 24 + e.tau
         if (globalHour < startHour || globalHour >= endHour) continue

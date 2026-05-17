@@ -689,10 +689,25 @@ export default function LiveMap({ N, policyKey, params: paramsProp }) {
 
       // Generate accidents using the section-time-slot Poisson model.
       // Current hour-of-day = simStartHour + simT/3600 (mod 24).
+      // When forceTimeSlot is set, override the slot lookup to the
+      // forced slot and scale rates by B=5 so the daily total stays
+      // consistent (matches the simulateOnce path).
+      const forcedSlotIdx = Number.isInteger(st.params.forceTimeSlot)
+        && st.params.forceTimeSlot >= 1 && st.params.forceTimeSlot <= 5
+        ? st.params.forceTimeSlot - 1
+        : null
       const simHour = ((st.params.simStartHour ?? 0) + st.simT / 3600) % 24
-      const slot = timeSlotForHour(simHour)
+      const slot = forcedSlotIdx != null
+        ? TIME_SLOTS[forcedSlotIdx]
+        : timeSlotForHour(simHour)
       const slotIdx = slot.index - 1
-      const slotDurationSec = (slot.endHour - slot.startHour) * 3600
+      // For the forced regime, treat the daily rate as if spread across
+      // all 24 h (so scale by B / 24h instead of by 1 / slotDurationSec).
+      // Net effect: same daily total as Auto mode, but with the forced
+      // slot's section-distribution P(i|b).
+      const slotDurationSec = forcedSlotIdx != null
+        ? 24 * 3600 / TIME_SLOTS.length  // = (24h)/B = ~4.8h per slot equivalent
+        : (slot.endHour - slot.startHour) * 3600
       // DEMO_RATE_BOOST accelerates the demo beyond the corridor's real
       // rate so events arrive on a watchable cadence. Monte-Carlo metrics
       // are unaffected — that path uses simulateOnce() with no boost.
@@ -856,9 +871,16 @@ export default function LiveMap({ N, policyKey, params: paramsProp }) {
   const currentHourLabel = `${String(Math.floor(currentHour)).padStart(2, '0')}:${String(
     Math.floor((currentHour - Math.floor(currentHour)) * 60)
   ).padStart(2, '0')}`
-  const currentSlot = TIME_SLOTS.find(
-    (s) => currentHour >= s.startHour && currentHour < s.endHour
-  ) ?? TIME_SLOTS[TIME_SLOTS.length - 1]
+  // When forceTimeSlot is set, the displayed slot reflects the forced
+  // regime — not the wall-clock slot. The hour label still ticks so
+  // operators can see sim time elapsing.
+  const forcedSlot = Number.isInteger(paramsProp?.forceTimeSlot)
+    && paramsProp.forceTimeSlot >= 1 && paramsProp.forceTimeSlot <= 5
+    ? TIME_SLOTS[paramsProp.forceTimeSlot - 1]
+    : null
+  const currentSlot = forcedSlot
+    ?? TIME_SLOTS.find((s) => currentHour >= s.startHour && currentHour < s.endHour)
+    ?? TIME_SLOTS[TIME_SLOTS.length - 1]
 
   // Refined, calmer palette for the KPI cards. Each entry uses a soft
   // background tint and a slate-leaning value colour rather than full
@@ -889,10 +911,13 @@ export default function LiveMap({ N, policyKey, params: paramsProp }) {
           <span className="text-[10.5px] font-mono text-slate-400">N = {N}</span>
           <span className="text-slate-600 text-[10px]">/</span>
           <span
-            className="text-[10.5px] font-mono text-cyan-700"
-            title={`Time-of-day clock — slot ${currentSlot.index}: ${currentSlot.label} (${String(currentSlot.startHour).padStart(2, '0')}:00–${String(currentSlot.endHour).padStart(2, '0')}:00). Rate distribution per section follows P(i | b) for this slot.`}
+            className={`text-[10.5px] font-mono ${forcedSlot ? 'text-amber-700' : 'text-cyan-700'}`}
+            title={forcedSlot
+              ? `Time-of-day LOCKED to slot ${currentSlot.index}: ${currentSlot.label} (${String(currentSlot.startHour).padStart(2, '0')}:00–${String(currentSlot.endHour).padStart(2, '0')}:00). All accidents use this slot's P(i | b) regardless of wall-clock hour.`
+              : `Time-of-day clock — slot ${currentSlot.index}: ${currentSlot.label} (${String(currentSlot.startHour).padStart(2, '0')}:00–${String(currentSlot.endHour).padStart(2, '0')}:00). Rate distribution per section follows P(i | b) for this slot.`
+            }
           >
-            {currentHourLabel} · slot {currentSlot.index}
+            {forcedSlot ? `🔒 slot ${currentSlot.index} (${currentSlot.label})` : `${currentHourLabel} · slot ${currentSlot.index}`}
           </span>
           <span className="text-slate-600 text-[10px]">/</span>
           <span

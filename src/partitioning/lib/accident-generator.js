@@ -107,26 +107,48 @@ export function samplePoisson(lambda, rng) {
  * Generate every accident event for one calendar day, given the per-
  * (section, slot) rate matrix from computeSectionTimeSlotRates().
  *
+ * `forceTimeSlot` (optional, 1..5 or null): when set, ALL events for the
+ * day are generated under the chosen slot's section-distribution P(i|b),
+ * with the daily rate scaled by B=5 so total events/day matches the
+ * corridor's natural rate. tau is then uniform across the full 24-hour
+ * day. Use this to study a single time-of-day regime (e.g. "simulate
+ * 30 days where every hour is morning rush") without losing Monte
+ * Carlo statistics to a 4-hour-window-only sub-sample.
+ *
  * Returns events sorted by time of day. Each event is a tuple:
  *   {
  *     id:            'D{day}_{n}'           unique within the run
  *     day:           integer day number
  *     timeSlot:      1..5
  *     sectionIndex:  1..N
- *     tau:           hour of day in [t_start_b, t_end_b], e.g. 8.25
+ *     tau:           hour of day in [t_start_b, t_end_b], or [0, 24)
+ *                    when forceTimeSlot is set
  *     s:             km along the corridor in [s_start_i, s_end_i]
  *   }
  */
-export function generateAccidentsForDay(rateMatrix, day, rng) {
+export function generateAccidentsForDay(rateMatrix, day, rng, forceTimeSlot = null) {
   const events = []
   let seq = 1
-  for (const row of rateMatrix) {
-    for (let b = 0; b < TIME_SLOTS.length; b++) {
-      const slot = TIME_SLOTS[b]
-      const lam = row.lambda[b]
+
+  if (forceTimeSlot != null) {
+    if (!Number.isInteger(forceTimeSlot) ||
+        forceTimeSlot < 1 || forceTimeSlot > TIME_SLOTS.length) {
+      throw new Error(`forceTimeSlot must be 1..${TIME_SLOTS.length} or null`)
+    }
+    const b = forceTimeSlot - 1
+    const slot = TIME_SLOTS[b]
+    // Scale lambda by B so the daily total matches a normal day. The
+    // section weighting P(i|b) for the chosen slot is preserved
+    // because row.lambda[b] already encodes (dailyTotal/B) · P(i|b).
+    const scale = TIME_SLOTS.length // = B
+    for (const row of rateMatrix) {
+      const lam = row.lambda[b] * scale
       const n = samplePoisson(lam, rng)
       for (let k = 0; k < n; k++) {
-        const tau = slot.startHour + rng() * (slot.endHour - slot.startHour)
+        // Events distributed across the full day so drones see arrivals
+        // at all hours — but each event's risk profile is locked to
+        // the forced slot.
+        const tau = rng() * 24
         const s = row.sStart + rng() * (row.sEnd - row.sStart)
         events.push({
           id: `D${day}_${seq++}`,
@@ -138,7 +160,28 @@ export function generateAccidentsForDay(rateMatrix, day, rng) {
         })
       }
     }
+  } else {
+    for (const row of rateMatrix) {
+      for (let b = 0; b < TIME_SLOTS.length; b++) {
+        const slot = TIME_SLOTS[b]
+        const lam = row.lambda[b]
+        const n = samplePoisson(lam, rng)
+        for (let k = 0; k < n; k++) {
+          const tau = slot.startHour + rng() * (slot.endHour - slot.startHour)
+          const s = row.sStart + rng() * (row.sEnd - row.sStart)
+          events.push({
+            id: `D${day}_${seq++}`,
+            day,
+            timeSlot: slot.index,
+            sectionIndex: row.sectionIndex,
+            tau,
+            s,
+          })
+        }
+      }
+    }
   }
+
   events.sort((a, b) => a.tau - b.tau)
   return events
 }

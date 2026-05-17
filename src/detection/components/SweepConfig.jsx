@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { DEFAULT_PARAMS } from '../lib/detection-sim'
 
-function NumberField({ label, value, onChange, hint, min, max, step = 1 }) {
+function NumberField({ label, value, onChange, hint, min, max, step = 1, disabled = false, disabledHint }) {
   return (
-    <label className="flex flex-col gap-1.5">
+    <label className={`flex flex-col gap-1.5 ${disabled ? 'opacity-50' : ''}`}>
       <span className="text-[9px] text-slate-500 uppercase tracking-[0.14em] font-semibold">
         {label}
       </span>
@@ -14,14 +14,54 @@ function NumberField({ label, value, onChange, hint, min, max, step = 1 }) {
         min={min}
         max={max}
         step={step}
-        className="bg-slate-700/50 ring-1 ring-slate-800 rounded-lg px-2.5 py-1.5 text-[12px] font-mono text-slate-100 focus:outline-none focus:ring-blue-700/60 transition"
+        disabled={disabled}
+        title={disabled && disabledHint ? disabledHint : undefined}
+        className="bg-slate-700/50 ring-1 ring-slate-800 rounded-lg px-2.5 py-1.5 text-[12px] font-mono text-slate-100 focus:outline-none focus:ring-blue-700/60 transition disabled:cursor-not-allowed"
       />
+      {(disabled && disabledHint) ? (
+        <span className="text-[9px] text-amber-700 italic">{disabledHint}</span>
+      ) : hint ? (
+        <span className="text-[9px] text-slate-500">{hint}</span>
+      ) : null}
+    </label>
+  )
+}
+
+function SelectField({ label, value, onChange, options, hint }) {
+  return (
+    <label className="flex flex-col gap-1.5">
+      <span className="text-[9px] text-slate-500 uppercase tracking-[0.14em] font-semibold">
+        {label}
+      </span>
+      <select
+        value={value == null ? '' : String(value)}
+        onChange={(e) => {
+          const v = e.target.value
+          onChange(v === '' ? null : Number(v))
+        }}
+        className="bg-slate-700/50 ring-1 ring-slate-800 rounded-lg px-2 py-1.5 text-[12px] font-mono text-slate-100 focus:outline-none focus:ring-blue-700/60 transition cursor-pointer"
+      >
+        {options.map((o) => (
+          <option key={o.value == null ? 'auto' : String(o.value)} value={o.value == null ? '' : String(o.value)}>
+            {o.label}
+          </option>
+        ))}
+      </select>
       {hint && (
         <span className="text-[9px] text-slate-500">{hint}</span>
       )}
     </label>
   )
 }
+
+const TIME_SLOT_OPTIONS = [
+  { value: null, label: 'Auto — normal day' },
+  { value: 1, label: '1 · Night 00–06' },
+  { value: 2, label: '2 · Morning rush 06–10' },
+  { value: 3, label: '3 · Normal day 10–16' },
+  { value: 4, label: '4 · Evening rush 16–20' },
+  { value: 5, label: '5 · Late evening 20–24' },
+]
 
 function TextField({ label, value, onChange, hint }) {
   return (
@@ -124,13 +164,25 @@ export default function SweepConfig({
           min={0.04}
           max={365}
         />
+        <SelectField
+          label="Time-of-day mode"
+          value={params.forceTimeSlot}
+          onChange={(v) => setParam('forceTimeSlot', v)}
+          options={TIME_SLOT_OPTIONS}
+          hint="Auto = normal day (all 5 slots cycle); pick a slot to lock the entire trial to that risk profile"
+        />
+      </div>
+
+      <div className="mt-3 grid grid-cols-2 lg:grid-cols-4 gap-3">
         <NumberField
           label="Trial start hour"
           value={params.simStartHour}
           onChange={(v) => setParam('simStartHour', Math.max(0, Math.min(23, v)))}
-          hint="time-of-day slot (0–23)"
+          hint="time-of-day clock starts here (0–23)"
           min={0}
           max={23}
+          disabled={params.forceTimeSlot != null}
+          disabledHint="Ignored — slot locked by Time-of-day mode"
         />
       </div>
 
