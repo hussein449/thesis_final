@@ -135,14 +135,18 @@ export function alertTimeForCandidate({ segment, sk, R_IoT, v, t }) {
 
 /**
  * Compute the accident's final detection time using the canonical IoT
- * model: identify the patrol segment m that contains s_k, test only the
- * three candidate UAVs j ∈ {m-1, m, m+1} (invalid indices ignored), and
- * return the minimum alert time across them.
+ * model: identify the patrol segment m that contains s_k, test the
+ * three candidate segments j ∈ {m-1, m, m+1} (invalid indices ignored),
+ * and return the minimum alert time across EVERY drone in those
+ * segments — supporting Risk-aware stacking where one segment may
+ * contain multiple drones.
  *
  *   segments:  array of patrol segments [{ index, A, B, ... }, ...]
- *   uavStates: { [m]: { sj, dj } }  current state of each UAV by 1-based
- *              segment index. If omitted, the parametric motion formula
- *              is used with t (defaults to 0).
+ *   uavStates: { [m]: { sj, dj } | [{ sj, dj }, ...] }  current state(s)
+ *              of UAV(s) by 1-based segment index. A single object is
+ *              treated as a length-1 list for backward compatibility
+ *              with un-stacked configurations. If omitted, the
+ *              parametric motion formula is used with t (defaults to 0).
  *   sk:        accident position in meters
  *   R_IoT:     IoT range in meters
  *   v:         UAV speed in m/s
@@ -151,10 +155,13 @@ export function alertTimeForCandidate({ segment, sk, R_IoT, v, t }) {
  *
  * Returns:
  *   {
- *     candidate: m | null,         segment that owns the accident
- *     responder: m | null,         segment index of the winning UAV
- *     tAlert:    seconds | null,   min alert time across candidates
- *     per:       [{ m, tAlert }],  one entry per tested candidate
+ *     candidate:    m | null,         segment that owns the accident
+ *     responder:    m | null,         segment index of the winning UAV
+ *     responderStackIdx: number|null, 0-based index of winning drone
+ *                                     WITHIN its segment's stack (0 if
+ *                                     the segment has only 1 drone).
+ *     tAlert:       seconds | null,   min alert time across candidates
+ *     per:          [{ m, tAlert }],  one entry per drone tested
  *   }
  */
 export function computeIotDetection({
@@ -162,25 +169,50 @@ export function computeIotDetection({
 }) {
   const m = patrolSegmentIndexAt(segments, sk)
   if (m < 0) {
-    return { candidate: null, responder: null, tAlert: null, per: [] }
+    return { candidate: null, responder: null, responderStackIdx: null, tAlert: null, per: [] }
   }
   const candidateIndices = [m - 1, m, m + 1].filter(
     (j) => j >= 1 && j <= segments.length
   )
   const per = []
-  let best = { m: null, tAlert: null }
+  let best = { m: null, stackIdx: null, tAlert: null }
   for (const j of candidateIndices) {
     const segment = segments[j - 1]
-    const st = uavStates?.[j]
-    const tAlert = st
-      ? alertTimeForCandidateAtState({ segment, sj: st.sj, dj: st.dj, sk, R_IoT, v })
-      : alertTimeForCandidate({ segment, sk, R_IoT, v, t })
-    per.push({ m: j, tAlert })
-    if (tAlert != null && (best.tAlert == null || tAlert < best.tAlert)) {
-      best = { m: j, tAlert }
+    const raw = uavStates?.[j]
+    // Normalise to a list: undefined → [], single obj → [obj], list → list.
+    const stateList = raw == null
+      ? null
+      : Array.isArray(raw) ? raw : [raw]
+
+    if (stateList == null) {
+      // No live drone snapshot for this segment → fall back to the
+      // parametric motion model. Single notional drone per segment.
+      const tAlert = alertTimeForCandidate({ segment, sk, R_IoT, v, t })
+      per.push({ m: j, stackIdx: 0, tAlert })
+      if (tAlert != null && (best.tAlert == null || tAlert < best.tAlert)) {
+        best = { m: j, stackIdx: 0, tAlert }
+      }
+    } else {
+      // Live snapshots — evaluate every stacked drone in this segment.
+      for (let k = 0; k < stateList.length; k++) {
+        const st = stateList[k]
+        const tAlert = alertTimeForCandidateAtState({
+          segment, sj: st.sj, dj: st.dj, sk, R_IoT, v,
+        })
+        per.push({ m: j, stackIdx: k, tAlert })
+        if (tAlert != null && (best.tAlert == null || tAlert < best.tAlert)) {
+          best = { m: j, stackIdx: k, tAlert }
+        }
+      }
     }
   }
-  return { candidate: m, responder: best.m, tAlert: best.tAlert, per }
+  return {
+    candidate: m,
+    responder: best.m,
+    responderStackIdx: best.stackIdx,
+    tAlert: best.tAlert,
+    per,
+  }
 }
 
 // ---------------------------------------------------------------------------

@@ -320,19 +320,39 @@ export function simulateOnce({ allocation, params, seed }) {
           riskMatrix: model.riskMatrix,
         })
       : []
+    // Build drone-state pool. Each segment may carry droneCount ≥ 1
+    // (Risk-aware can stack hot-spot segments). Stacked drones get an
+    // even phase-offset so they don't move in lockstep; without this
+    // two drones in the same segment patrol as one effective drone.
     const droneStates = []
-    for (let i = 0; i < segments.length; i++) {
-      const seg = segments[i]
-      droneStates.push({
-        s: seg.A + rng() * (seg.B - seg.A),
-        dir: rng() < 0.5 ? 1 : -1,
-        segStart: seg.A,
-        segEnd: seg.B,
-        patrolIdx: seg.index,            // 1-based, used for IoT 3-candidate lookup
-        battery: 60 + rng() * 40,
-        state: 'patrolling',             // patrolling | returning | docked
-        phaseEnd: 0,
-      })
+    for (const seg of segments) {
+      const k = seg.droneCount ?? 1
+      const segLen = seg.B - seg.A
+      for (let i = 0; i < k; i++) {
+        // Always consume two rng draws for stable cross-config seeds —
+        // a stacked vs un-stacked seg should still produce comparable
+        // accident sequences.
+        const posRand = rng()
+        const dirRand = rng()
+        const battery = 60 + rng() * 40
+        // Stacked → deterministic even spacing + alternating direction.
+        // Solo → random initial (existing behaviour).
+        const phaseFrac = k > 1 ? i / k : posRand
+        const dir = k > 1
+          ? (i % 2 === 0 ? 1 : -1)
+          : (dirRand < 0.5 ? 1 : -1)
+        droneStates.push({
+          s: seg.A + phaseFrac * segLen,
+          dir,
+          segStart: seg.A,
+          segEnd: seg.B,
+          patrolIdx: seg.index,          // segment index — shared by stack
+          stackIdx: i,                   // 0..k-1 within the stack
+          battery,
+          state: 'patrolling',           // patrolling | returning | docked
+          phaseEnd: 0,
+        })
+      }
     }
     return {
       road,
@@ -344,9 +364,21 @@ export function simulateOnce({ allocation, params, seed }) {
   })
 
   // Reserve pool (shared across all roads). Each reserve, when dispatched,
-  // takes over a vacated segment after a short delay.
+  // takes over a partially-vacated segment after a short delay.
+  //
+  // Pool size scales with total fleet so big fleets — which can have
+  // many stacked hot-spot segments cycling batteries — don't starve.
+  // Formula: max(user-provided P.reserveCount, ceil(N/8)). User can
+  // always raise the floor; we just bump it when N is large.
+  const totalAssignedDrones = roadStates.reduce(
+    (s, rs) => s + rs.droneStates.length, 0,
+  )
+  const reserveCount = Math.max(
+    P.reserveCount ?? 2,
+    Math.ceil(totalAssignedDrones / 8),
+  )
   const reserves = []
-  for (let i = 0; i < P.reserveCount; i++) {
+  for (let i = 0; i < reserveCount; i++) {
     reserves.push({ state: 'idle', readyAt: 0, target: null })
   }
 
@@ -385,8 +417,28 @@ export function simulateOnce({ allocation, params, seed }) {
               d.state = 'returning'
               d.phaseEnd = t + P.dockTransitTime
 
-              // Try to dispatch a reserve to cover the gap.
-              if (P.enableOperational) {
+              // Dispatch a reserve ONLY if this segment is now under-
+              // covered relative to its allocated count. For un-stacked
+              // segments (droneCount=1) this fires whenever the lone
+              // drone leaves — same as the legacy behaviour. For stacked
+              // segments (droneCount>1) this preserves "always have N
+              // drones in hot spots" without wasting reserves when the
+              // segment still has redundancy.
+              const seg = rs.segments.find((s) => s.index === d.patrolIdx)
+              const allocated = seg?.droneCount ?? 1
+              const stillPatrolling = rs.droneStates.filter(
+                (x) => x.patrolIdx === d.patrolIdx && x.state === 'patrolling'
+              ).length
+              const coveringReserves = reserves.filter(
+                (rv) => rv.state === 'covering' && rv.target
+                  && rv.target.patrolIdx === d.patrolIdx
+              ).length
+              const enrouteReserves = reserves.filter(
+                (rv) => rv.state === 'enroute' && rv.target
+                  && rv.target.patrolIdx === d.patrolIdx
+              ).length
+              const effectiveCount = stillPatrolling + coveringReserves + enrouteReserves
+              if (effectiveCount < allocated) {
                 const r = reserves.find((x) => x.state === 'idle')
                 if (r) {
                   r.state = 'enroute'
@@ -459,18 +511,22 @@ export function simulateOnce({ allocation, params, seed }) {
     ) {
       const acc = accidents[nextAccIdx]
       const rs = roadStates[acc.roadIdx]
+      // uavStates is now a map of patrolIdx -> [drone snapshots]
+      // because Risk-aware can stack multiple drones in one segment.
+      // computeIotDetection scans every drone in {m-1, m, m+1}.
       const uavStates = {}
       for (const d of rs.droneStates) {
         if (d.state === 'patrolling') {
-          uavStates[d.patrolIdx] = { sj: d.s, dj: d.dir }
+          if (!uavStates[d.patrolIdx]) uavStates[d.patrolIdx] = []
+          uavStates[d.patrolIdx].push({ sj: d.s, dj: d.dir })
         }
       }
-      // A covering reserve replaces its target patrol UAV in the candidate set.
+      // Covering reserves augment the segment's candidate list.
       for (const r of reserves) {
         if (r.state !== 'covering' || !r.target) continue
         if (!rs.droneStates.includes(r.target)) continue
-        if (uavStates[r.target.patrolIdx]) continue
-        uavStates[r.target.patrolIdx] = { sj: r.s, dj: r.dir }
+        if (!uavStates[r.target.patrolIdx]) uavStates[r.target.patrolIdx] = []
+        uavStates[r.target.patrolIdx].push({ sj: r.s, dj: r.dir })
       }
       const detection = computeIotDetection({
         segments: rs.segments,
@@ -484,12 +540,12 @@ export function simulateOnce({ allocation, params, seed }) {
         acc.detected = true
         acc.detectionTime = detection.tAlert
         acc.responder = detection.responder
-        // Distinguish "covered by own patrol" vs. "covered by reserve" by
-        // checking which UAV won.
-        const responder = rs.droneStates.find(
+        // "Covered by own patrol" vs. "covered by reserve": did any
+        // currently-patrolling drone share the responder's segment?
+        const responderIsPatrolling = rs.droneStates.some(
           (d) => d.patrolIdx === detection.responder && d.state === 'patrolling'
         )
-        if (responder) dispatchAttempts.covered++
+        if (responderIsPatrolling) dispatchAttempts.covered++
         else dispatchAttempts.delayed++
       } else {
         acc.missed = true
@@ -556,21 +612,37 @@ export function simulateWithDispatch({ allocation, params, seed, dispatchRule = 
           riskMatrix: model.riskMatrix,
         })
       : []
+    // Build drone-state pool. Each segment may carry droneCount ≥ 1
+    // (Risk-aware can stack hot-spot segments). Stacked drones get an
+    // even phase-offset and alternating directions so the active-dispatch
+    // model still sees them as independent responders.
     const droneStates = []
-    for (let i = 0; i < segments.length; i++) {
-      const seg = segments[i]
-      droneStates.push({
-        idx: i,
-        s: seg.A + rng() * (seg.B - seg.A),
-        dir: rng() < 0.5 ? 1 : -1,
-        segStart: seg.A,
-        segEnd: seg.B,
-        patrolIdx: seg.index,
-        battery: 60 + rng() * 40,
-        state: 'patrolling',
-        phaseEnd: 0,
-        dispatches: 0,
-      })
+    let globalIdx = 0
+    for (const seg of segments) {
+      const k = seg.droneCount ?? 1
+      const segLen = seg.B - seg.A
+      for (let i = 0; i < k; i++) {
+        const posRand = rng()
+        const dirRand = rng()
+        const battery = 60 + rng() * 40
+        const phaseFrac = k > 1 ? i / k : posRand
+        const dir = k > 1
+          ? (i % 2 === 0 ? 1 : -1)
+          : (dirRand < 0.5 ? 1 : -1)
+        droneStates.push({
+          idx: globalIdx++,
+          s: seg.A + phaseFrac * segLen,
+          dir,
+          segStart: seg.A,
+          segEnd: seg.B,
+          patrolIdx: seg.index,
+          stackIdx: i,
+          battery,
+          state: 'patrolling',
+          phaseEnd: 0,
+          dispatches: 0,
+        })
+      }
     }
     return { road, path, segments, droneStates, nAssigned: nDrones }
   })
@@ -682,21 +754,34 @@ export function simulateDetailedLog({ allocation, params, seed, sampleInterval =
           riskMatrix: model.riskMatrix,
         })
       : []
+    // Stacked drones get phase-offset positions + alternating directions.
     const droneStates = []
-    for (let i = 0; i < segments.length; i++) {
-      const seg = segments[i]
-      droneStates.push({
-        id: `${road.shortName}-${i + 1}`,
-        corridor: road.name,
-        s: seg.A + rng() * (seg.B - seg.A),
-        dir: rng() < 0.5 ? 1 : -1,
-        segStart: seg.A,
-        segEnd: seg.B,
-        patrolIdx: seg.index,
-        battery: 60 + rng() * 40,
-        state: 'patrolling',
-        phaseEnd: 0,
-      })
+    let droneNum = 1
+    for (const seg of segments) {
+      const k = seg.droneCount ?? 1
+      const segLen = seg.B - seg.A
+      for (let i = 0; i < k; i++) {
+        const posRand = rng()
+        const dirRand = rng()
+        const battery = 60 + rng() * 40
+        const phaseFrac = k > 1 ? i / k : posRand
+        const dir = k > 1
+          ? (i % 2 === 0 ? 1 : -1)
+          : (dirRand < 0.5 ? 1 : -1)
+        droneStates.push({
+          id: `${road.shortName}-${droneNum++}`,
+          corridor: road.name,
+          s: seg.A + phaseFrac * segLen,
+          dir,
+          segStart: seg.A,
+          segEnd: seg.B,
+          patrolIdx: seg.index,
+          stackIdx: i,
+          battery,
+          state: 'patrolling',
+          phaseEnd: 0,
+        })
+      }
     }
     return { road, path, segments, droneStates }
   })
@@ -755,7 +840,8 @@ export function simulateDetailedLog({ allocation, params, seed, sampleInterval =
       const uavStates = {}
       for (const d of rs.droneStates) {
         if (d.state === 'patrolling') {
-          uavStates[d.patrolIdx] = { sj: d.s, dj: d.dir }
+          if (!uavStates[d.patrolIdx]) uavStates[d.patrolIdx] = []
+          uavStates[d.patrolIdx].push({ sj: d.s, dj: d.dir })
         }
       }
       const detection = computeIotDetection({
@@ -769,7 +855,12 @@ export function simulateDetailedLog({ allocation, params, seed, sampleInterval =
       if (detection.tAlert != null && detection.tAlert <= P.maxDetectionWindow) {
         acc.detected = true
         acc.detectionTime = +detection.tAlert.toFixed(1)
-        const responder = rs.droneStates.find((d) => d.patrolIdx === detection.responder)
+        // For the log, pick the specific drone inside the responder's
+        // segment (stackIdx tells us which of the stacked drones won).
+        const candidates = rs.droneStates.filter(
+          (d) => d.patrolIdx === detection.responder
+        )
+        const responder = candidates[detection.responderStackIdx ?? 0] ?? candidates[0]
         acc.respondingUAV = responder?.id ?? ''
       } else {
         acc.missed = true
@@ -819,23 +910,39 @@ export function simulateBatteryTrace({ allocation, params, seed, sampleInterval 
       sections: model.sections,
       riskMatrix: model.riskMatrix,
     })
-    for (let i = 0; i < segments.length; i++) {
-      const seg = segments[i]
-      drones.push({
-        id: `${road.shortName}-${i + 1}`,
-        label: `${road.shortName} #${i + 1}`,
-        color: road.color,
-        roadIdx: ri,
-        segStart: seg.A,
-        segEnd: seg.B,
-        patrolIdx: seg.index,
-        s: seg.A + rng() * (seg.B - seg.A),
-        dir: rng() < 0.5 ? 1 : -1,
-        battery: 40 + (i / Math.max(nDrones - 1, 1)) * 55, // stagger 40–95%
-        state: 'patrolling',
-        phaseEnd: 0,
-        samples: [],
-      })
+    // Walk segments; respect droneCount for stacking. Stagger initial
+    // battery across the *global* drone index so all stacked drones in
+    // one hot-spot segment don't dock at the same instant.
+    let droneNum = 0
+    for (const seg of segments) {
+      const k = seg.droneCount ?? 1
+      const segLen = seg.B - seg.A
+      for (let i = 0; i < k; i++) {
+        const posRand = rng()
+        const dirRand = rng()
+        const phaseFrac = k > 1 ? i / k : posRand
+        const dir = k > 1
+          ? (i % 2 === 0 ? 1 : -1)
+          : (dirRand < 0.5 ? 1 : -1)
+        const battery = 40 + (droneNum / Math.max(nDrones - 1, 1)) * 55
+        drones.push({
+          id: `${road.shortName}-${droneNum + 1}`,
+          label: `${road.shortName} #${droneNum + 1}`,
+          color: road.color,
+          roadIdx: ri,
+          segStart: seg.A,
+          segEnd: seg.B,
+          patrolIdx: seg.index,
+          stackIdx: i,
+          s: seg.A + phaseFrac * segLen,
+          dir,
+          battery,
+          state: 'patrolling',
+          phaseEnd: 0,
+          samples: [],
+        })
+        droneNum++
+      }
     }
   })
 

@@ -29,7 +29,9 @@
 
 /**
  * §6.1 — Equal-length patrol segmentation.
- * Divides [0, corridorLengthM] into M segments, each of length L/M.
+ * Divides [0, corridorLengthM] into M segments, each of length L/M. Each
+ * segment gets exactly one drone (droneCount = 1) — Uniform never
+ * stacks; that's its definitional "no-info" property.
  */
 export function buildUniformSegments(corridorLengthM, M) {
   if (corridorLengthM <= 0) throw new Error('corridorLengthM must be positive')
@@ -42,22 +44,34 @@ export function buildUniformSegments(corridorLengthM, M) {
       A: (m - 1) * segLen,
       B: m * segLen,
       length: segLen,
+      droneCount: 1,
     })
   }
   return segments
 }
 
 /**
- * §6.2 — Equal-cumulative-risk patrol segmentation.
+ * §6.2 — Equal-cumulative-risk patrol segmentation with stacking.
  *
  *   sections     — output of buildSections(road.lengthKm) [{ index, sStart, sEnd, ... }]
  *                  sStart / sEnd are in km.
  *   riskMatrix   — output of computeRiskMatrix(sectionScores) — each row
  *                  has an R array of length B (one entry per time slot).
- *   M            — number of UAV patrol segments.
+ *   M            — total number of drones to deploy on this road.
+ *
+ * Two-stage allocation:
+ *   1. Build up to min(M, N_sections) BASE segments using the existing
+ *      greedy equal-cumulative-risk walk, target = totalRisk / effectiveM.
+ *      Each base segment is guaranteed at least one drone.
+ *   2. If M > N_sections (i.e. we have more drones than sections), the
+ *      EXCESS (M - N_sections) drones are distributed across the 28 base
+ *      segments by Hamilton's largest-remainder method, weighted by each
+ *      segment's mean risk. Hot-spot segments end up with multiple drones
+ *      (droneCount > 1); low-risk segments stay at 1. Each segment's
+ *      droneCount is attached so callers can size the drone-state pool.
  *
  * Returns segments with the same shape as buildUniformSegments() plus
- *   { sectionStart, sectionEnd, riskTotal, riskAverage }
+ *   { sectionStart, sectionEnd, riskTotal, riskAverage, droneCount }
  * where sectionStart/sectionEnd are inclusive 1-based section indices.
  */
 export function buildRiskAwareSegments(sections, riskMatrix, M) {
@@ -68,7 +82,7 @@ export function buildRiskAwareSegments(sections, riskMatrix, M) {
     throw new Error('riskMatrix must have one row per section')
   }
   if (!Number.isInteger(M) || M < 1) throw new Error('M must be a positive integer')
-  // Cap M so each segment gets at least one section.
+  // Cap base segments so each gets at least one section.
   const effectiveM = Math.min(M, sections.length)
 
   // R_i — average over time slots for each section.
@@ -130,9 +144,39 @@ export function buildRiskAwareSegments(sections, riskMatrix, M) {
       sectionEnd: sections[i - 1].index,
       riskTotal: r,
       riskAverage: r / (i - curStart),
+      droneCount: 1, // base allocation — overwritten below if M > effectiveM
     })
     curStart = i
   }
+
+  // Stage 2 — distribute excess drones (M > effectiveM) across base
+  // segments by Hamilton's largest-remainder on riskAverage. Each
+  // segment keeps its base 1 + Hamilton-assigned extras.
+  if (M > effectiveM) {
+    const extras = M - effectiveM
+    const totalSegRisk = segments.reduce((s, x) => s + x.riskAverage, 0) || 1
+    const items = segments.map((seg, idx) => {
+      const exact = (seg.riskAverage / totalSegRisk) * extras
+      return {
+        idx,
+        exact,
+        extra: Math.floor(exact),
+        frac: exact - Math.floor(exact),
+      }
+    })
+    let remaining = extras - items.reduce((s, x) => s + x.extra, 0)
+    // Largest-remainder tie-break: higher riskAverage first if fracs are
+    // equal, so the hottest segments get the marginal drone.
+    const byFrac = [...items].sort((a, b) => {
+      if (b.frac !== a.frac) return b.frac - a.frac
+      return segments[b.idx].riskAverage - segments[a.idx].riskAverage
+    })
+    for (let k = 0; k < remaining; k++) byFrac[k].extra += 1
+    for (const it of items) {
+      segments[it.idx].droneCount = 1 + it.extra
+    }
+  }
+
   return segments
 }
 

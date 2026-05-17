@@ -190,13 +190,19 @@ function drawPatrolSegments(map, rs) {
     layers.push(fence)
   }
 
-  // "UAV m" labels centred on each segment.
+  // "UAV m" labels centred on each segment. With Risk-aware stacking a
+  // segment may carry multiple drones; suffix " ×k" so the operator
+  // can see at a glance where the fleet is doubled up.
   for (const seg of rs.segments) {
     const midM = (seg.A + seg.B) / 2
     const [xc, yc] = positionAt(rs.path, Math.min(midM, pathLen))
     const [nx, ny] = perpendicularAt(rs.path, Math.min(midM, pathLen))
     const [latL, lonL] = unprojectMeters(xc + nx * 320, yc + ny * 320, rs.path.refLat, rs.path.refLon)
     const lengthKm = (seg.length / 1000).toFixed(1)
+    const stackCount = seg.droneCount ?? 1
+    const stackNote = stackCount > 1
+      ? `<span style="color:#FBBF24"> · ×${stackCount}</span>`
+      : ''
     const riskNote = seg.riskAverage != null
       ? `<span style="color:#A78BFA"> · R̄ ${seg.riskAverage.toFixed(2)}</span>`
       : ''
@@ -210,10 +216,10 @@ function drawPatrolSegments(map, rs) {
         white-space: nowrap;
         box-shadow: 0 2px 6px rgba(0,0,0,0.3);
         border: 1.5px solid #ffffff66;
-      ">UAV ${seg.index} · ${lengthKm} km${riskNote}</div>`,
+      ">UAV ${seg.index} · ${lengthKm} km${stackNote}${riskNote}</div>`,
       className: '',
-      iconSize: [120, 22],
-      iconAnchor: [60, 11],
+      iconSize: [140, 22],
+      iconAnchor: [70, 11],
     })
     const label = L.marker([latL, lonL], { icon: labelIcon, interactive: false }).addTo(map)
     layers.push(label)
@@ -242,31 +248,42 @@ function makeRoadState(allocation, params, rng, patrolMode) {
         })
       : []
 
+    // Build drone states honouring seg.droneCount (Risk-aware can stack
+    // hot-spot segments). Stacked drones get phase-offset start
+    // positions and alternating directions so they don't move in
+    // lockstep — that's what makes the 2nd drone actually add coverage.
     const droneStates = []
-    for (let i = 0; i < segments.length; i++) {
-      const seg = segments[i]
+    let droneNum = 0
+    for (const seg of segments) {
+      const k = seg.droneCount ?? 1
       const segLen = seg.B - seg.A
       const segDrainFactor = segmentDrainFactor(segLen)
-      // Stagger initial battery across [35, 100] %. Each drone gets a
-      // random starting charge so their return-to-dock cycles do NOT all
-      // align at t=0 — this prevents the whole fleet hitting the low-
-      // battery threshold simultaneously.
-      const initialBattery = 35 + rng() * 65
-      // Per-drone drain jitter (±12%) on top of the segment-length factor.
-      const drainJitter = 0.88 + rng() * 0.24
-      droneStates.push({
-        id: `${road.id}-${i}`,
-        s: seg.A + rng() * segLen,
-        dir: rng() < 0.5 ? 1 : -1,
-        segStart: seg.A,
-        segEnd: seg.B,
-        segLen,
-        patrolIdx: seg.index,
-        drainFactor: segDrainFactor * drainJitter,
-        battery: initialBattery,
-        state: 'patrolling',
-        phaseEnd: 0,
-      })
+      for (let i = 0; i < k; i++) {
+        // Per-drone drain jitter (±12 %) on top of the segment-length factor.
+        const drainJitter = 0.88 + rng() * 0.24
+        // Stagger initial battery across [35, 100] %, slightly offset
+        // per stack slot so two drones in the same segment don't dock
+        // together at t≈0.
+        const initialBattery = 35 + rng() * 65
+        const phaseFrac = k > 1 ? i / k : rng()
+        const dir = k > 1
+          ? (i % 2 === 0 ? 1 : -1)
+          : (rng() < 0.5 ? 1 : -1)
+        droneStates.push({
+          id: `${road.id}-${droneNum++}`,
+          s: seg.A + phaseFrac * segLen,
+          dir,
+          segStart: seg.A,
+          segEnd: seg.B,
+          segLen,
+          patrolIdx: seg.index,
+          stackIdx: i,
+          drainFactor: segDrainFactor * drainJitter,
+          battery: initialBattery,
+          state: 'patrolling',
+          phaseEnd: 0,
+        })
+      }
     }
     return {
       road,
@@ -695,10 +712,13 @@ export default function LiveMap({ N, policyKey, params: paramsProp }) {
             const seq = st.nextAccidentSeq++
             const accId = `A${String(seq).padStart(4, '0')}`
             // IoT alert: closed-form T_alert from §11 + 3-candidate rule.
+            // With Risk-aware stacking a segment can host multiple drones,
+            // so uavStates is a map of patrolIdx → list of drone snapshots.
             const uavStates = {}
             for (const d of rs.droneStates) {
               if (d.state === 'patrolling') {
-                uavStates[d.patrolIdx] = { sj: d.s, dj: d.dir }
+                if (!uavStates[d.patrolIdx]) uavStates[d.patrolIdx] = []
+                uavStates[d.patrolIdx].push({ sj: d.s, dj: d.dir })
               }
             }
             const detection = computeIotDetection({
@@ -708,8 +728,13 @@ export default function LiveMap({ N, policyKey, params: paramsProp }) {
               R_IoT,
               v,
             })
-            const responderDrone = detection.responder != null
-              ? rs.droneStates.find((d) => d.patrolIdx === detection.responder)
+            // Pick the specific drone inside the responder's segment that
+            // won — stackIdx tells us which of the stacked drones it is.
+            const responderCandidates = detection.responder != null
+              ? rs.droneStates.filter((d) => d.patrolIdx === detection.responder)
+              : []
+            const responderDrone = responderCandidates.length > 0
+              ? (responderCandidates[detection.responderStackIdx ?? 0] ?? responderCandidates[0])
               : null
             const willDetect = detection.tAlert != null && detection.tAlert <= st.params.maxDetectionWindow
             st.accidents.push({
