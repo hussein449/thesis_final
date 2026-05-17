@@ -153,12 +153,13 @@ export const DEFAULT_PARAMS = {
   maxDetectionWindow: 600,   // s
 
   // Battery model (Step 3 — integrated operational simulation)
-  // [DESIGN] 3 % per minute = 0.05 %/s → 100 % discharges in ~33 min,
-  //         a touch longer than the DJI Mavic 3's 25-min datasheet
-  //         figure but realistic for a payload-light surveillance UAV
-  //         (no heavy gimbal, conservative cruise).
+  // [DESIGN] 2 % per minute = 0.0333 %/s → 100 % discharges in ~50 min,
+  //         calibrated to the DJI Mavic 3 datasheet (~46 min flight
+  //         time at conservative cruise with a light payload). The
+  //         longer cycle also reduces reserve-pool churn and matches
+  //         the ground-truth surveillance UAV duty-cycle.
   enableOperational: true,
-  batteryDrainRate: 3 / 60,       // %/s while patrolling  (= 3 %/min)
+  batteryDrainRate: 2 / 60,       // %/s while patrolling  (= 2 %/min)
   // [DESIGN] return-to-dock and ready-to-deploy thresholds. 25 % gives a
   //         comfortable margin to ferry back to the dock without forcing an
   //         emergency landing; 80 % avoids redeploying a barely-charged drone.
