@@ -8,7 +8,6 @@ import LiveMap from './components/LiveMap'
 import SensitivityPlots from './components/SensitivityPlots'
 import DetectionCDFPlots from './components/DetectionCDFPlots'
 import DispatchComparison from './components/DispatchComparison'
-import { DataSources } from '../partitioning/PartitionPage'
 import { runSweep } from './lib/monteCarlo'
 import { POLICIES } from './lib/policies'
 
@@ -64,7 +63,6 @@ const NAV_GROUPS = [
     label: 'Tools',
     items: [
       { key: 'live',        label: 'Live trial',    icon: '◉', desc: 'Animated simulation · logs · export' },
-      { key: 'datasources', label: 'Data Sources',  icon: '⊕', desc: 'Inputs · citations · provenance' },
     ],
   },
 ]
@@ -73,7 +71,7 @@ const NAV_GROUPS = [
 function NavItem({ item, active, onClick, hasResults, running }) {
   const locked = item.key !== 'configure' && item.key !== 'live' &&
     item.key !== 'dispatch' && item.key !== 'sensitivity' &&
-    item.key !== 'cdf' && item.key !== 'datasources' &&
+    item.key !== 'cdf' &&
     !hasResults && !running
 
   return (
@@ -399,11 +397,6 @@ export default function DetectionPage() {
             trialsPerPoint={config.trialsPerPoint}
             params={config.params}
           />
-        )}
-
-        {/* ── Data Sources ── */}
-        {activeSection === 'datasources' && (
-          <DataSources />
         )}
 
         {/* ── Live trial ── */}

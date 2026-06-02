@@ -18,6 +18,46 @@ import { POLICIES } from '../lib/policies'
 const grid = '#1e293b'
 const textColor = '#64748b'
 
+function toCSV(rows) {
+  if (!rows.length) return ''
+  const headers = Object.keys(rows[0])
+  const lines = [
+    headers.join(','),
+    ...rows.map((r) =>
+      headers.map((h) => {
+        const v = r[h] ?? ''
+        return String(v).includes(',') ? `"${v}"` : v
+      }).join(',')
+    ),
+  ]
+  return lines.join('\r\n')
+}
+
+function downloadCSV(rows, filename) {
+  const blob = new Blob([toCSV(rows)], { type: 'text/csv' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+function ExportCSVButton({ onClick, disabled = false }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className={`flex items-center gap-1.5 px-2.5 py-1 text-[9.5px] font-bold rounded-md border transition-colors shrink-0
+        ${disabled
+          ? 'border-[var(--color-border2)] text-[var(--color-txt3)] opacity-50 cursor-not-allowed'
+          : 'border-emerald-500/40 bg-emerald-500/10 text-emerald-800 hover:bg-emerald-500/20 cursor-pointer'}`}
+    >
+      ⬇ Export CSV
+    </button>
+  )
+}
+
 // ── P(T_d < 2 min) vs N from sweep results ───────────────────────────────────
 function buildPUnder2MinData(results) {
   const policies = Object.keys(results)
@@ -101,17 +141,23 @@ export default function DetectionCDFPlots({ results }) {
     <div className="space-y-4">
       {/* ── CDF curve: P(Td < τ) vs τ at fixed N ─────────── */}
       <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-card)] p-4">
-        <div className="mb-2">
-          <div className="text-[10px] text-[var(--color-txt2)] uppercase tracking-widest font-semibold">
-            P(T<sub>d</sub> &lt; τ) — empirical CDF of detection time
-            <span className="ml-2 text-[var(--color-txt3)] normal-case tracking-normal font-normal">
-              N = {CDF_N}, {CDF_TRIALS} trials, 30 min sim time
-            </span>
+        <div className="mb-2 flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="text-[10px] text-[var(--color-txt2)] uppercase tracking-widest font-semibold">
+              P(T<sub>d</sub> &lt; τ) — empirical CDF of detection time
+              <span className="ml-2 text-[var(--color-txt3)] normal-case tracking-normal font-normal">
+                N = {CDF_N}, {CDF_TRIALS} trials, 30 min sim time
+              </span>
+            </div>
+            <div className="text-[9.5px] text-[var(--color-txt3)] mt-0.5 leading-relaxed">
+              Fraction of accidents detected within τ seconds. A curve shifted left means faster
+              detection. The dashed lines mark τ = 120 s (2 min) — the key service-level threshold.
+            </div>
           </div>
-          <div className="text-[9.5px] text-[var(--color-txt3)] mt-0.5 leading-relaxed">
-            Fraction of accidents detected within τ seconds. A curve shifted left means faster
-            detection. The dashed lines mark τ = 120 s (2 min) — the key service-level threshold.
-          </div>
+          <ExportCSVButton
+            onClick={() => downloadCSV(cdfData, `cdf-detection-time_N${CDF_N}.csv`)}
+            disabled={cdfData.length === 0}
+          />
         </div>
 
         <ResponsiveContainer width="100%" height={260}>
@@ -188,19 +234,25 @@ export default function DetectionCDFPlots({ results }) {
 
       {/* ── P(Td < 2 min) vs N from sweep (if available) ── */}
       <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-card)] p-4">
-        <div className="mb-2">
-          <div className="text-[10px] text-[var(--color-txt2)] uppercase tracking-widest font-semibold">
-            P(T<sub>d</sub> &lt; 2 min) vs fleet size N
-            {!hasSweepResults && (
-              <span className="ml-2 text-amber-700/70 normal-case tracking-normal font-normal">
-                — run a sweep on Step 1 to populate this chart
-              </span>
-            )}
+        <div className="mb-2 flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="text-[10px] text-[var(--color-txt2)] uppercase tracking-widest font-semibold">
+              P(T<sub>d</sub> &lt; 2 min) vs fleet size N
+              {!hasSweepResults && (
+                <span className="ml-2 text-amber-700/70 normal-case tracking-normal font-normal">
+                  — run a sweep on Step 1 to populate this chart
+                </span>
+              )}
+            </div>
+            <div className="text-[9.5px] text-[var(--color-txt3)] mt-0.5 leading-relaxed">
+              Service-level metric: probability that any given accident is detected within 2 minutes,
+              aggregated across all trials per fleet size.
+            </div>
           </div>
-          <div className="text-[9.5px] text-[var(--color-txt3)] mt-0.5 leading-relaxed">
-            Service-level metric: probability that any given accident is detected within 2 minutes,
-            aggregated across all trials per fleet size.
-          </div>
+          <ExportCSVButton
+            onClick={() => downloadCSV(pUnder2MinData, 'p-under-2min_vs_N.csv')}
+            disabled={!hasSweepResults || pUnder2MinData.length === 0}
+          />
         </div>
 
         {hasSweepResults ? (

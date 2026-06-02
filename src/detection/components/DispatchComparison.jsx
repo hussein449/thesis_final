@@ -32,6 +32,31 @@ const DISPATCH_STRATEGIES = [
 const grid = '#1e293b'
 const textColor = '#64748b'
 
+function toCSV(rows) {
+  if (!rows.length) return ''
+  const headers = Object.keys(rows[0])
+  const lines = [
+    headers.join(','),
+    ...rows.map((r) =>
+      headers.map((h) => {
+        const v = r[h] ?? ''
+        return String(v).includes(',') ? `"${v}"` : v
+      }).join(',')
+    ),
+  ]
+  return lines.join('\r\n')
+}
+
+function downloadCSV(rows, filename) {
+  const blob = new Blob([toCSV(rows)], { type: 'text/csv' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
 // Hard caps to keep the tab responsive even if Configure has 100 trials
 // or a 30-day window. Smaller Configure values are respected verbatim.
 const MAX_TOTAL_TIME = 7 * 86400  // 7 days
@@ -133,8 +158,20 @@ export default function DispatchComparison({ fleetSizes, trialsPerPoint, params 
     <div className="space-y-4">
       {/* Header */}
       <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-card)] px-5 py-4">
-        <div className="text-[10px] text-[var(--color-txt2)] uppercase tracking-widest font-semibold mb-1">
-          Dispatch strategy comparison — active-response model
+        <div className="flex items-start justify-between gap-3 mb-1">
+          <div className="text-[10px] text-[var(--color-txt2)] uppercase tracking-widest font-semibold">
+            Dispatch strategy comparison — active-response model
+          </div>
+          <button
+            onClick={() => data && downloadCSV(data, `dispatch-strategies_N${safeFleetSizes.join('-')}.csv`)}
+            disabled={!data}
+            className={`flex items-center gap-1.5 px-2.5 py-1 text-[9.5px] font-bold rounded-md border transition-colors shrink-0
+              ${!data
+                ? 'border-[var(--color-border2)] text-[var(--color-txt3)] opacity-50 cursor-not-allowed'
+                : 'border-emerald-500/40 bg-emerald-500/10 text-emerald-800 hover:bg-emerald-500/20 cursor-pointer'}`}
+          >
+            ⬇ Export CSV
+          </button>
         </div>
         <div className="text-[11px] text-[var(--color-txt3)] leading-relaxed max-w-3xl">
           <span className="text-[var(--color-txt2)] font-semibold">What this tab answers:</span>{' '}
