@@ -34,7 +34,7 @@ function AppHeader({
   const tabs = [
     { key: 'detection', label: 'Operations',          icon: '◇' },
     { key: 'sim',       label: 'Dispatch Protocol',   icon: '◈' },
-    { key: 'hardware',  label: 'Hardware Link',       icon: '⌬', soon: true },
+    { key: 'hardware',  label: 'Hardware Link',       icon: '⌬', href: 'http://192.168.4.1/' },
   ]
 
   const simPhase =
@@ -125,10 +125,14 @@ function AppHeader({
       <nav className="flex items-center gap-1 px-4 shrink-0">
         {tabs.map(t => {
           const active = t.key === page || (t.key === 'sim' && page === 'results')
+          const onClick = () => {
+            if (t.href) window.open(t.href, '_blank', 'noopener,noreferrer')
+            else if (!t.soon) setPage(t.key)
+          }
           return (
             <button
               key={t.key}
-              onClick={() => { if (!t.soon) setPage(t.key) }}
+              onClick={onClick}
               className={`relative flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11.5px] font-medium transition-colors
                 ${active
                   ? 'bg-[var(--color-accent)]/15 text-[var(--color-accent)] ring-1 ring-[var(--color-accent)]/30 cursor-pointer'
@@ -136,7 +140,7 @@ function AppHeader({
                     ? 'text-[var(--color-txt3)] cursor-not-allowed'
                     : 'text-[var(--color-txt2)] hover:text-[var(--color-white)] hover:bg-white/5 cursor-pointer'
                 }`}
-              title={t.soon ? 'Coming soon' : undefined}
+              title={t.soon ? 'Coming soon' : t.href ? `Open ${t.href}` : undefined}
             >
               <span className="text-[11px]">{t.icon}</span>
               {t.label}
@@ -144,6 +148,9 @@ function AppHeader({
                 <span className="ml-1 px-1.5 py-[1px] rounded text-[8.5px] font-bold uppercase tracking-wider bg-amber-500/15 text-amber-700 ring-1 ring-amber-700/30">
                   Soon
                 </span>
+              )}
+              {t.href && (
+                <span className="ml-0.5 text-[10px] opacity-70" aria-hidden="true">↗</span>
               )}
             </button>
           )
