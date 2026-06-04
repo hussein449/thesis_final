@@ -8,6 +8,7 @@ import LiveMap from './components/LiveMap'
 import SensitivityPlots from './components/SensitivityPlots'
 import DetectionCDFPlots from './components/DetectionCDFPlots'
 import DispatchComparison from './components/DispatchComparison'
+import FleetAvailabilityPlots from './components/FleetAvailabilityPlots'
 import { runSweep } from './lib/monteCarlo'
 import { POLICIES } from './lib/policies'
 
@@ -57,6 +58,7 @@ const NAV_GROUPS = [
     items: [
       { key: 'allocation', label: 'Allocation table',    icon: '⬡', desc: 'Per-road drone counts' },
       { key: 'dispatch',   label: 'Dispatch strategies', icon: '⊗', desc: 'Nearest · battery · balanced' },
+      { key: 'fleetAvail', label: 'Fleet availability',  icon: '⌁', desc: 'Event-based battery & docking' },
     ],
   },
   {
@@ -71,7 +73,7 @@ const NAV_GROUPS = [
 function NavItem({ item, active, onClick, hasResults, running }) {
   const locked = item.key !== 'configure' && item.key !== 'live' &&
     item.key !== 'dispatch' && item.key !== 'sensitivity' &&
-    item.key !== 'cdf' &&
+    item.key !== 'cdf' && item.key !== 'fleetAvail' &&
     !hasResults && !running
 
   return (
@@ -397,6 +399,11 @@ export default function DetectionPage() {
             trialsPerPoint={config.trialsPerPoint}
             params={config.params}
           />
+        )}
+
+        {/* ── Fleet availability (event-based battery & docking) ── */}
+        {activeSection === 'fleetAvail' && (
+          <FleetAvailabilityPlots />
         )}
 
         {/* ── Live trial ── */}
