@@ -10,6 +10,7 @@ import Settings from './components/Settings'
 import Results from './components/ResultsPage'
 // import LoraApp from './lora/LoraApp'
 import DetectionPage from './detection/DetectionPage'
+import HardwareEventsPage from './hardware/HardwareEventsPage'
 
 // ─── Reusable icon ────────────────────────────────────────────────────────────
 function GearIcon() {
@@ -34,7 +35,7 @@ function AppHeader({
   const tabs = [
     { key: 'detection', label: 'Operations',          icon: '◇' },
     { key: 'sim',       label: 'Dispatch Protocol',   icon: '◈' },
-    { key: 'hardware',  label: 'Hardware Link',       icon: '⌬', href: 'http://192.168.4.1/' },
+    { key: 'hardware',  label: 'Hardware Link',       icon: '⌬' },
   ]
 
   const simPhase =
@@ -424,6 +425,17 @@ export default function App() {
       <div className="min-h-screen bg-[var(--color-bg)] flex flex-col">
         <AppHeader {...headerProps} />
         <DetectionPage />
+      </div>
+    )
+  }
+
+  if (page === 'hardware') {
+    return (
+      <div className="min-h-screen bg-[var(--color-bg)] flex flex-col">
+        <AppHeader {...headerProps} />
+        <div className="flex-1 overflow-y-auto bg-slate-700/50 p-6">
+          <HardwareEventsPage />
+        </div>
       </div>
     )
   }
