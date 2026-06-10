@@ -9,6 +9,7 @@ import SensitivityPlots from './components/SensitivityPlots'
 import DetectionCDFPlots from './components/DetectionCDFPlots'
 import DispatchComparison from './components/DispatchComparison'
 import FleetAvailabilityPlots from './components/FleetAvailabilityPlots'
+import HardwareEventsPage from '../hardware/HardwareEventsPage'
 import { runSweep } from './lib/monteCarlo'
 import { POLICIES } from './lib/policies'
 
@@ -67,6 +68,12 @@ const NAV_GROUPS = [
       { key: 'live',        label: 'Live trial',    icon: '◉', desc: 'Animated simulation · logs · export' },
     ],
   },
+  {
+    label: 'Hardware',
+    items: [
+      { key: 'hardware',    label: 'Hardware Link', icon: '⌬', desc: 'Live ESP32 events from Supabase' },
+    ],
+  },
 ]
 
 // ── Sidebar item ──────────────────────────────────────────────────────────────
@@ -74,6 +81,7 @@ function NavItem({ item, active, onClick, hasResults, running }) {
   const locked = item.key !== 'configure' && item.key !== 'live' &&
     item.key !== 'dispatch' && item.key !== 'sensitivity' &&
     item.key !== 'cdf' && item.key !== 'fleetAvail' &&
+    item.key !== 'hardware' &&
     !hasResults && !running
 
   return (
@@ -404,6 +412,11 @@ export default function DetectionPage() {
         {/* ── Fleet availability (event-based battery & docking) ── */}
         {activeSection === 'fleetAvail' && (
           <FleetAvailabilityPlots />
+        )}
+
+        {/* ── Hardware Link (live events from Supabase) ── */}
+        {activeSection === 'hardware' && (
+          <HardwareEventsPage />
         )}
 
         {/* ── Live trial ── */}
