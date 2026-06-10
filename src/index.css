@@ -21,10 +21,10 @@
        Sage #74C69D and gold #D4AF37 are reserved for fills, areas, and
        icons (NOT for thin lines or small labels on the cream bg). For
        lines/labels on cream, use emerald #2D6A4F or charcoal. */
-  --color-bg: #F4F4F0;        /* clean off-white canvas */
+  --color-bg: #FFFFFF;        /* pure white canvas — cards (taupe) stand out */
   --color-bg2: #14341A;       /* rich forest — top header chrome */
   --color-sidebar: #14341A;   /* same rich forest for left sidebar */
-  --color-main: #F4F4F0;      /* main panel matches canvas */
+  --color-main: #FFFFFF;      /* main panel matches canvas */
   --color-card: #C5B89C;      /* darker warm taupe — module containers */
   --color-border: #8E8060;    /* solid taupe separator */
   --color-border2: #6E6248;   /* emphasised separator */

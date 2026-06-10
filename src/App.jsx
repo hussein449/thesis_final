@@ -433,7 +433,7 @@ export default function App() {
     return (
       <div className="min-h-screen bg-[var(--color-bg)] flex flex-col">
         <AppHeader {...headerProps} />
-        <div className="flex-1 overflow-y-auto bg-slate-700/50 p-6">
+        <div className="flex-1 overflow-y-auto bg-[var(--color-bg)] p-6">
           <HardwareEventsPage />
         </div>
       </div>
