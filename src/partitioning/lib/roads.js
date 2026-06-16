@@ -181,6 +181,31 @@ export const ROADS = [
       'between Mount Lebanon and South Governorate, immediately north of Saida (Sidon). ' +
       'This is the highest-flow, poorly-lit half of the M51 corridor and the focus of ' +
       'the patrol study.',
+    // Manual curvature override (C_i) per 1-km section, 0..2.
+    // The polyline-derived heuristic is unreliable on a 13-vertex polyline
+    // — real road curves between vertices score 0 because the chord is
+    // straight. These values are read by risk-scoring.js#defaultSectionScores
+    // and follow the geography of the M51 corridor:
+    //   km  0-2   Khalde interchange (ramps + curve) → 1
+    //   km  3-5   straight motorway south of Khalde → 0
+    //   km  5-7   Damour approach (coastal bend) → 1
+    //   km  8-12  Damour bypass / straight stretch → 0
+    //   km 12-14  Jiyeh coastal curve → 1
+    //   km 14-16  straight → 0
+    //   km 16-18  Saadiyat bend → 1
+    //   km 18-20  straight → 0
+    //   km 20-25  Rmeileh / coastal curves → 1
+    //   km 25-27  Saida / Awali approach (sharper) → 2
+    //   km 27-end Awali bridge → 1
+    // 28 entries (one per S_i, S1..S28). Adjust freely from the map.
+    sectionCurvature: [
+      1, 1, 0, 0, 0,   // S1-S5   Khalde area → straight to Damour
+      1, 1, 0, 0, 0,   // S6-S10  Damour approach + bypass
+      0, 0, 1, 1, 0,   // S11-S15 toward Jiyeh
+      0, 1, 1, 0, 0,   // S16-S20 between Jiyeh and Saadiyat
+      0, 1, 1, 1, 1,   // S21-S25 toward Rmeileh
+      2, 2, 1,         // S26-S28 Awali approach + bridge
+    ],
     // 13-point simplified polyline (OSRM v5 / OSM motorway ways), truncated at
     // the Awali River bridge. Listed as [lat, lon] for the simulation engine.
     polyline: [

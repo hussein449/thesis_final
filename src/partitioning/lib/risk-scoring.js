@@ -224,13 +224,22 @@ export function defaultSectionScores(road, sectionLengthKm = DEFAULT_SECTION_LEN
   const sections = buildSections(road.lengthKm, sectionLengthKm)
   return sections.map((sec) => {
     const midKm = (sec.sStart + sec.sEnd) / 2
+    // Curvature: if the road declares a manual sectionCurvature array,
+    // prefer that — it overrides the polyline-derived heuristic, which
+    // is unreliable on coarsely-simplified geometries (the M51 polyline
+    // has only 13 vertices, so most real road curves fall between
+    // straight chords and would score 0 otherwise).
+    const manualC = road.sectionCurvature?.[sec.index - 1]
+    const C = (Number.isInteger(manualC) && manualC >= 0 && manualC <= 2)
+      ? manualC
+      : defaultCurvatureScore(path, sec.sStart * 1000, sec.sEnd * 1000)
     return {
       sectionIndex: sec.index,
       sStart: sec.sStart,
       sEnd: sec.sEnd,
       length: sec.length,
       T: defaultTrafficScore(midKm, road.lengthKm),
-      C: defaultCurvatureScore(path, sec.sStart * 1000, sec.sEnd * 1000),
+      C,
       M: defaultMergingScore(sec.sStart, sec.sEnd),
     }
   })
