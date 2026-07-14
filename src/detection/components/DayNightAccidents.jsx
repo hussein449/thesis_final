@@ -29,7 +29,7 @@ function parseRows(raw) {
     const region = parts[1]
     const hour = parseInt(timestamp.split(' ')[1], 10)
     if (!region || !Number.isFinite(hour)) continue
-    rows.push({ region, hour })
+    rows.push({ region, hour, year: timestamp.slice(0, 4) })
   }
   return rows
 }
@@ -157,7 +157,8 @@ function StatTile({ label, value, sub, color }) {
 
 // ── Main component ───────────────────────────────────────────────────────────
 export default function DayNightAccidents() {
-  const regions = useMemo(() => aggregateByRegion(parseRows(csvRaw)), [])
+  const rows = useMemo(() => parseRows(csvRaw), [])
+  const regions = useMemo(() => aggregateByRegion(rows), [rows])
 
   const totals = useMemo(() => {
     const day = regions.reduce((s, r) => s + r.day, 0)
@@ -165,14 +166,51 @@ export default function DayNightAccidents() {
     return { day, night, all: day + night }
   }, [regions])
 
+  const yearCounts = useMemo(() => {
+    const byYear = {}
+    for (const { year } of rows) byYear[year] = (byYear[year] || 0) + 1
+    return Object.entries(byYear).sort(([a], [b]) => a.localeCompare(b))
+  }, [rows])
+
   const pct = (n) => totals.all > 0 ? `${((n / totals.all) * 100).toFixed(1)}%` : '—'
 
   return (
     <div className="space-y-4">
 
+      {/* ── About the data (mirrors the SensitivityPlots header card) ── */}
+      <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-card)] px-5 py-4">
+        <div className="text-[10px] text-[var(--color-txt2)] uppercase tracking-widest font-semibold mb-1">
+          About the data — regional accident records
+        </div>
+        <div className="mb-2 inline-flex items-center gap-2 px-2 py-0.5 rounded-md bg-amber-700/10 ring-1 ring-amber-700/30 text-[10px] font-semibold text-amber-700 uppercase tracking-wider">
+          {totals.all.toLocaleString()} records · 2016 – Jul 2018
+        </div>
+        <div className="text-[11px] text-[var(--color-txt3)] leading-relaxed max-w-3xl">
+          <span className="text-[var(--color-txt2)] font-semibold">Where it comes from:</span>{' '}
+          emergency accident reports compiled from yearly log files (2016, 2017, and a
+          Beirut &amp; South file covering 2018), filtered to the {regions.length} regions along the
+          M51 Khalde → Awali corridor. Each record is one reported accident with its
+          timestamp and emergency region.
+          <br />
+          <span className="text-[var(--color-txt2)] font-semibold">Coverage:</span>{' '}
+          2016 and 2017 are full years; 2018 covers January – July only.
+          Day is defined as <span className="text-[var(--color-txt2)] font-semibold">08:00 – 17:00</span>;
+          everything else counts as night.
+        </div>
+        <div className="mt-3 flex flex-wrap gap-4 text-[10px] text-[var(--color-txt3)]">
+          {yearCounts.map(([year, count]) => (
+            <div key={year} className="flex items-center gap-1.5">
+              <span className="font-semibold text-[var(--color-txt2)]">{year}:</span>
+              <span className="font-mono">{count} accidents</span>
+              {year === '2018' && <span className="text-amber-700/70">(Jan – Jul)</span>}
+            </div>
+          ))}
+        </div>
+      </div>
+
       {/* ── Summary strip ── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <StatTile label="Total accidents" value={totals.all} sub={`${regions.length} regions · 2016–2017`} />
+        <StatTile label="Total accidents" value={totals.all} sub={`${regions.length} regions · 2016 – Jul 2018`} />
         <StatTile label="Day (08:00–17:00)" value={totals.day} sub={`${pct(totals.day)} of all accidents`} color={DAY_COLOR} />
         <StatTile label="Night (17:00–08:00)" value={totals.night} sub={`${pct(totals.night)} of all accidents`} color={NIGHT_COLOR} />
         <StatTile
