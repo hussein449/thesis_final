@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
+  BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer,
 } from 'recharts'
 import csvRaw from '../data/day_night_accidents.csv?raw'
@@ -116,9 +116,8 @@ const AXIS_PROPS = {
   x: {
     dataKey: 'region',
     stroke: textColor,
-    tick: { fontSize: 10, angle: -25, textAnchor: 'end' },
+    tick: { fontSize: 10 },
     interval: 0,
-    height: 55,
   },
   y: {
     stroke: textColor,
@@ -199,21 +198,28 @@ export default function DayNightAccidents() {
         <RegionBarChart data={regions} dataKey="night" name="Night (17:00–08:00)" color={NIGHT_COLOR} />
       </ChartCard>
 
-      {/* ── Total accidents per region (stacked day + night) ── */}
+      {/* ── Day vs night totals (all regions combined) ── */}
       <ChartCard
-        title="Total accidents per region"
-        description="Full-day totals per region; each bar stacks the day and night contributions."
+        title="Day vs night — all regions"
+        description="Total accidents across all regions: day (08:00–17:00) versus night (17:00–08:00)."
         onExport={() => downloadCSV(regions)}
       >
         <ResponsiveContainer width="100%" height={260}>
-          <BarChart data={regions} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
+          <BarChart
+            data={[
+              { label: 'Day (8am–5pm)', value: totals.day, color: DAY_COLOR },
+              { label: 'Night (5pm–8am)', value: totals.night, color: NIGHT_COLOR },
+            ]}
+            margin={{ top: 10, right: 20, left: 0, bottom: 0 }}
+          >
             <CartesianGrid stroke={grid} strokeDasharray="3 3" />
-            <XAxis {...AXIS_PROPS.x} />
+            <XAxis dataKey="label" stroke={textColor} tick={{ fontSize: 10 }} interval={0} />
             <YAxis {...AXIS_PROPS.y} />
             <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(100,116,139,0.08)' }} />
-            <Legend verticalAlign="top" align="right" iconSize={9} wrapperStyle={{ fontSize: 10, color: textColor, paddingBottom: 6 }} />
-            <Bar dataKey="day" name="Day (08:00–17:00)" stackId="dn" fill={DAY_COLOR} fillOpacity={0.85} maxBarSize={44} isAnimationActive={false} />
-            <Bar dataKey="night" name="Night (17:00–08:00)" stackId="dn" fill={NIGHT_COLOR} fillOpacity={0.85} radius={[3, 3, 0, 0]} maxBarSize={44} isAnimationActive={false} />
+            <Bar dataKey="value" name="Accidents" fillOpacity={0.85} radius={[3, 3, 0, 0]} maxBarSize={90} isAnimationActive={false}>
+              <Cell fill={DAY_COLOR} />
+              <Cell fill={NIGHT_COLOR} />
+            </Bar>
           </BarChart>
         </ResponsiveContainer>
       </ChartCard>
