@@ -59,6 +59,7 @@ const NAV_GROUPS = [
       { key: 'allocation', label: 'Allocation table',    icon: '⬡', desc: 'Per-road drone counts' },
       { key: 'dispatch',   label: 'Dispatch strategies', icon: '⊗', desc: 'Nearest · battery · balanced' },
       { key: 'fleetAvail', label: 'Fleet availability',  icon: '⌁', desc: 'Event-based battery & docking' },
+      { key: 'dayNight',   label: 'Day vs night accidents', icon: '◐', desc: 'Diurnal accident patterns' },
     ],
   },
   {
@@ -74,6 +75,7 @@ function NavItem({ item, active, onClick, hasResults, running }) {
   const locked = item.key !== 'configure' && item.key !== 'live' &&
     item.key !== 'dispatch' && item.key !== 'sensitivity' &&
     item.key !== 'cdf' && item.key !== 'fleetAvail' &&
+    item.key !== 'dayNight' &&
     !hasResults && !running
 
   return (
@@ -404,6 +406,11 @@ export default function DetectionPage() {
         {/* ── Fleet availability (event-based battery & docking) ── */}
         {activeSection === 'fleetAvail' && (
           <FleetAvailabilityPlots />
+        )}
+
+        {/* ── Day vs night accidents ── */}
+        {activeSection === 'dayNight' && (
+          <EmptyState label="Day vs night accident analysis coming soon." />
         )}
 
         {/* ── Live trial ── */}
