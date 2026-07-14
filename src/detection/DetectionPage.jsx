@@ -9,6 +9,7 @@ import SensitivityPlots from './components/SensitivityPlots'
 import DetectionCDFPlots from './components/DetectionCDFPlots'
 import DispatchComparison from './components/DispatchComparison'
 import FleetAvailabilityPlots from './components/FleetAvailabilityPlots'
+import DayNightAccidents from './components/DayNightAccidents'
 import { runSweep } from './lib/monteCarlo'
 import { POLICIES } from './lib/policies'
 
@@ -410,7 +411,7 @@ export default function DetectionPage() {
 
         {/* ── Day vs night accidents ── */}
         {activeSection === 'dayNight' && (
-          <EmptyState label="Day vs night accident analysis coming soon." />
+          <DayNightAccidents />
         )}
 
         {/* ── Live trial ── */}
