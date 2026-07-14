@@ -135,7 +135,7 @@ function RegionBarChart({ data, dataKey, name, color }) {
         <XAxis {...AXIS_PROPS.x} />
         <YAxis {...AXIS_PROPS.y} />
         <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(100,116,139,0.08)' }} />
-        <Bar dataKey={dataKey} name={name} fill={color} fillOpacity={0.85} radius={[3, 3, 0, 0]} maxBarSize={44} />
+        <Bar dataKey={dataKey} name={name} fill={color} fillOpacity={0.85} radius={[3, 3, 0, 0]} maxBarSize={44} isAnimationActive={false} />
       </BarChart>
     </ResponsiveContainer>
   )
@@ -212,8 +212,8 @@ export default function DayNightAccidents() {
             <YAxis {...AXIS_PROPS.y} />
             <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(100,116,139,0.08)' }} />
             <Legend verticalAlign="top" align="right" iconSize={9} wrapperStyle={{ fontSize: 10, color: textColor, paddingBottom: 6 }} />
-            <Bar dataKey="day" name="Day (08:00–17:00)" stackId="dn" fill={DAY_COLOR} fillOpacity={0.85} maxBarSize={44} />
-            <Bar dataKey="night" name="Night (17:00–08:00)" stackId="dn" fill={NIGHT_COLOR} fillOpacity={0.85} radius={[3, 3, 0, 0]} maxBarSize={44} />
+            <Bar dataKey="day" name="Day (08:00–17:00)" stackId="dn" fill={DAY_COLOR} fillOpacity={0.85} maxBarSize={44} isAnimationActive={false} />
+            <Bar dataKey="night" name="Night (17:00–08:00)" stackId="dn" fill={NIGHT_COLOR} fillOpacity={0.85} radius={[3, 3, 0, 0]} maxBarSize={44} isAnimationActive={false} />
           </BarChart>
         </ResponsiveContainer>
       </ChartCard>
